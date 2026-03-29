@@ -111,6 +111,36 @@ export async function fetchTodayCupsSold() {
     return items.reduce((sum, i) => sum + i.quantity, 0)
 }
 
+// Fetch all orders for today, newest first
+export async function fetchTodayOrders() {
+    if (!supabase) return []
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const { data, error } = await supabase
+        .from('orders')
+        .select(`
+            id,
+            total,
+            created_at,
+            order_items (
+                quantity,
+                options,
+                products (
+                    name
+                )
+            )
+        `)
+        .gte('created_at', today.toISOString())
+        .order('created_at', { ascending: false })
+
+    if (error) {
+        console.error('fetchTodayOrders error:', error)
+        return []
+    }
+    return data
+}
+
 // Fetch current inventory (Disabled for now)
 export async function fetchInventory() {
     return { ...DEMO_INVENTORY }
@@ -127,8 +157,8 @@ export async function fetchRecipes(productIds) {
 }
 
 // Submit a complete order to Supabase
-// orderItems: [{ productId, quantity, price }]
-export async function submitOrder(orderItems, total) {
+// cart: [{ cartItemId, productId, quantity, basePrice, extras }]
+export async function submitOrder(cart, total) {
     if (!supabase) throw new Error('No Supabase connection')
 
     // 1. Insert order
@@ -140,14 +170,22 @@ export async function submitOrder(orderItems, total) {
 
     if (orderError) throw orderError
 
-    // 2. Insert order items (excluding extras to avoid foreign key errors)
-    const items = orderItems
-        .filter(item => !item.isExtra)
-        .map(item => ({
+    // 2. Insert order items
+    const items = cart.map(item => {
+        const payload = {
             order_id: order.id,
             product_id: item.productId,
             quantity: item.quantity,
-        }))
+        }
+
+        // Append options text if the user selected any extras
+        const optionsText = item.extras?.length > 0 ? item.extras.map(e => e.name).join(', ') : null;
+        if (optionsText) {
+            payload.options = optionsText;
+        }
+
+        return payload;
+    })
 
     if (items.length > 0) {
         const { error: itemsError } = await supabase

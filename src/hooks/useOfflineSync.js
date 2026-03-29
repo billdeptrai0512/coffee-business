@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 
 const PENDING_ORDERS_KEY = 'coffee_pending_orders'
 
-function getPendingOrders() {
+export function getPendingOrders() {
     try {
         const raw = localStorage.getItem(PENDING_ORDERS_KEY)
         return raw ? JSON.parse(raw) : []

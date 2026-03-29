@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './lib/supabaseClient'
-import { fetchProducts, fetchTodayRevenue, fetchInventory, submitOrder, fetchRecipes, fetchAllRecipes, fetchTodayCupsSold } from './services/orderService'
-import { useOfflineSync, addPendingOrder } from './hooks/useOfflineSync'
+import { fetchProducts, fetchTodayRevenue, fetchInventory, submitOrder, fetchAllRecipes, fetchTodayCupsSold, fetchTodayOrders } from './services/orderService'
+import { useOfflineSync, addPendingOrder, getPendingOrders } from './hooks/useOfflineSync'
 import './index.css'
-import { WalletSVG, DrinkSVG } from './components/icons'
 
 // Format VND currency
 function formatVND(amount) {
@@ -12,7 +11,7 @@ function formatVND(amount) {
 
 // Quick Extras (UUID formatted for safe DB parsing)
 const QUICK_EXTRAS = [
-  { id: '22222222-2222-2222-2222-222222222201', name: 'Size lớn', price: 6000 },
+  { id: '22222222-2222-2222-2222-222222222201', name: 'Lớn', price: 6000 },
   { id: '22222222-2222-2222-2222-222222222202', name: 'Ít đá', price: 0 },
   { id: '22222222-2222-2222-2222-222222222203', name: 'Không đá', price: 0 },
   { id: '22222222-2222-2222-2222-222222222204', name: 'Ít ngọt', price: 0 },
@@ -55,8 +54,9 @@ export default function App() {
     catch { return fallback }
   }
 
-  const [order, setOrder] = useState(() => loadLocalJSON('pos_order', {}))
-  const [extras, setExtras] = useState(() => loadLocalJSON('pos_extras', {}))
+  const [cart, setCart] = useState(() => loadLocalJSON('pos_cart', []))
+  const [activeCartItemId, setActiveCartItemId] = useState(null)
+
   const [revenue, setRevenue] = useState(() => Number(localStorage.getItem('pos_revenue')) || 0)
   const [cupsSold, setCupsSold] = useState(() => Number(localStorage.getItem('pos_cups')) || 0)
   const [inventory, setInventory] = useState(() => loadLocalJSON('pos_inventory', {}))
@@ -65,6 +65,11 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const toastTimer = useRef(null)
+
+  // ---- History View State ----
+  const [currentView, setCurrentView] = useState('pos')
+  const [todayOrders, setTodayOrders] = useState([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
   // ---- Offline sync ----
   const handleSyncComplete = useCallback(() => {
@@ -148,39 +153,20 @@ export default function App() {
 
   // ---- Autosave Daemon ----
   useEffect(() => {
-    localStorage.setItem('pos_order', JSON.stringify(order))
-    localStorage.setItem('pos_extras', JSON.stringify(extras))
+    localStorage.setItem('pos_cart', JSON.stringify(cart))
     localStorage.setItem('pos_revenue', revenue.toString())
     localStorage.setItem('pos_cups', cupsSold.toString())
     localStorage.setItem('pos_inventory', JSON.stringify(inventory))
-  }, [order, extras, revenue, cupsSold, inventory])
+  }, [cart, revenue, cupsSold, inventory])
 
   // ---- Order helpers ----
-  const baseItems = Object.entries(order)
-    .filter(([, qty]) => qty > 0)
-    .map(([productId, quantity]) => {
-      const product = products.find(p => p.id === productId)
-      return product ? { productId, quantity, name: product.name, price: product.price } : null
-    })
-    .filter(Boolean)
+  const total = cart.reduce((sum, item) => {
+    const extrasPrice = item.extras.reduce((extraSum, ex) => extraSum + ex.price, 0)
+    return sum + (item.basePrice + extrasPrice) * item.quantity
+  }, 0)
 
-  const extraItems = Object.entries(extras)
-    .filter(([, qty]) => qty > 0)
-    .map(([id, quantity]) => {
-      const extra = QUICK_EXTRAS.find(e => e.id === id)
-      return extra ? { productId: extra.id, quantity, name: extra.name, price: extra.price, isExtra: true } : null
-    })
-    .filter(Boolean)
-
-  const orderItems = [...baseItems, ...extraItems]
-
-  const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const orderCount = baseItems.reduce((sum, item) => sum + item.quantity, 0)
-
-  // ---- Check if ingredient stock is sufficient ----
-  function checkStockSufficiency(itemsToCheck) {
-    return [] // Disabled for now
-  }
+  const orderCount = cart.reduce((sum, item) => sum + item.quantity, 0)
+  const hasOrder = cart.length > 0
 
   // ---- Low stock warnings ----
   const lowStockItems = Object.entries(inventory)
@@ -195,70 +181,187 @@ export default function App() {
     .map(([ingredient]) => INGREDIENT_NAMES[ingredient] || ingredient)
 
   // ---- Handlers ----
-  function handleAddItem(productId) {
-    setOrder(prev => ({
-      ...prev,
-      [productId]: (prev[productId] || 0) + 1,
-    }))
+  function handleAddItem(product) {
+    const cartItemId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9)
+    setCart(prev => [...prev, {
+      cartItemId,
+      productId: product.id,
+      name: product.name,
+      basePrice: product.price,
+      quantity: 1,
+      extras: []
+    }])
+    setActiveCartItemId(cartItemId)
   }
 
   function handleDecreaseItem(productId) {
-    setOrder(prev => {
-      const newQty = (prev[productId] || 0) - 1
-      if (newQty <= 0) {
-        const next = { ...prev }
-        delete next[productId]
-        return next
+    setCart(prev => {
+      const lastIndex = [...prev].reverse().findIndex(item => item.productId === productId)
+      if (lastIndex === -1) return prev
+
+      const realIndex = prev.length - 1 - lastIndex
+      const next = [...prev]
+      if (next[realIndex].quantity > 1) {
+        next[realIndex] = { ...next[realIndex], quantity: next[realIndex].quantity - 1 }
+      } else {
+        next.splice(realIndex, 1)
       }
-      return { ...prev, [productId]: newQty }
+      return next
+    })
+  }
+
+  function handleRemoveCartItem(cartItemId) {
+    setCart(prev => prev.filter(item => item.cartItemId !== cartItemId))
+  }
+
+  function handleToggleExtra(extra) {
+    setCart(prev => {
+      if (prev.length === 0) return prev
+      let targetIndex = prev.findIndex(item => item.cartItemId === activeCartItemId)
+      if (targetIndex === -1) targetIndex = prev.length - 1 // Fallback
+
+      const next = [...prev]
+      const targetItem = next[targetIndex]
+      const hasExtra = targetItem.extras.some(e => e.id === extra.id)
+      const newExtras = hasExtra ? targetItem.extras.filter(e => e.id !== extra.id) : [...targetItem.extras, extra]
+
+      next[targetIndex] = { ...targetItem, extras: newExtras }
+      return next
     })
   }
 
   async function handleConfirm() {
-    if (orderItems.length === 0 || isSubmitting) return
-
-    const insufficient = checkStockSufficiency(orderItems)
-    if (insufficient.length > 0) {
-      showToast(`Không đủ: ${insufficient.join(', ')}`, 'error')
-      return
-    }
-
+    if (cart.length === 0 || isSubmitting) return
     setIsSubmitting(true)
 
     try {
       if (navigator.onLine && supabase) {
-        await submitOrder(orderItems, total)
+        await submitOrder(cart, total)
         setRevenue(prev => prev + total)
         setCupsSold(prev => prev + orderCount)
         showToast(`Tạo thành công`, 'success')
       } else {
-        addPendingOrder(orderItems, total)
+        addPendingOrder(cart, total)
         setRevenue(prev => prev + total)
         setCupsSold(prev => prev + orderCount)
         showToast(`Lưu offline (${getPendingCount()} đơn chờ)`, 'warning')
       }
-      setOrder({})
-      setExtras({})
+      setCart([])
+      setActiveCartItemId(null)
     } catch (err) {
       console.error('Submit error:', err)
-      addPendingOrder(orderItems, total)
+      addPendingOrder(cart, total)
       showToast('Lỗi mạng – đã lưu offline', 'warning')
-      setOrder({})
-      setExtras({})
+      setCart([])
+      setActiveCartItemId(null)
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  // ---- History View Handlers ----
+  async function handleOpenHistory() {
+    setCurrentView('history')
+    setIsLoadingHistory(true)
+    try {
+      const orders = await fetchTodayOrders()
+      setTodayOrders(orders)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsLoadingHistory(false)
+    }
+  }
+
+  // ---- Render History View ----
+  function renderHistoryView() {
+    const formattedOnline = todayOrders.map(o => ({
+      id: o.id,
+      total: o.total,
+      createdAt: o.created_at,
+      isOffline: false,
+      itemsText: o.order_items ? o.order_items.map(i => `${i.quantity} ${i.products?.name}${i.options ? ` (${i.options})` : ''}`).join(', ') : ''
+    }))
+
+    const pending = getPendingOrders()
+    const todayStr = new Date().toDateString()
+    const formattedOffline = pending
+      .filter(o => new Date(o.createdAt).toDateString() === todayStr)
+      .map((o, idx) => ({
+        id: `offline-${idx}`,
+        total: o.total,
+        createdAt: o.createdAt,
+        isOffline: true,
+        itemsText: o.cart
+          ? o.cart.map(i => `${i.quantity} ${i.name}${i.extras.length ? ` (${i.extras.map(e => e.name).join(', ')})` : ''}`).join(', ')
+          : o.orderItems ? o.orderItems.map(i => `${i.quantity} ${i.name}`).join(', ') : ''
+      }))
+
+    const allOrders = [...formattedOnline, ...formattedOffline].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+
+    return (
+      <div className="flex flex-col h-full max-w-lg mx-auto bg-bg">
+        <header className="shrink-0 pt-6 pb-4 bg-surface border-b border-border/60 shadow-sm relative z-20 flex items-center px-4 gap-3">
+          <button
+            onClick={() => setCurrentView('pos')}
+            className="w-10 h-10 flex items-center justify-center rounded-[14px] bg-surface-light border border-border/60 text-text hover:bg-border/40 active:bg-border/60 transition-colors shadow-sm focus:outline-none"
+          >
+            <span className="text-xl leading-none -mt-[3px] font-bold">←</span>
+          </button>
+          <div className="flex flex-col">
+            <h1 className="text-[19px] font-black text-text tracking-tight leading-none mb-1">Đơn Trong Ngày</h1>
+            <span className="text-[12px] font-bold text-text-secondary uppercase">{allOrders.length} đơn</span>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto px-4 py-5 space-y-3 bg-bg">
+          {isLoadingHistory ? (
+            <div className="flex justify-center py-10">
+              <span className="text-text-secondary font-medium">Đang tải...</span>
+            </div>
+          ) : allOrders.length === 0 ? (
+            <div className="flex justify-center py-10">
+              <span className="text-text-secondary font-medium">Chưa có đơn hàng nào hôm nay.</span>
+            </div>
+          ) : (
+            allOrders.map(order => {
+              const date = new Date(order.createdAt)
+              const time = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+
+              return (
+                <div key={order.id} className="bg-surface border border-border/60 rounded-[20px] p-4 shadow-sm flex flex-col gap-2 relative overflow-hidden">
+                  {order.isOffline && (
+                    <div className="absolute top-0 right-0 bg-warning/20 text-warning text-[10px] font-black px-2 py-1 rounded-bl-[14px] uppercase tracking-wider">
+                      Offline
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-text font-black text-[18px] text-primary">{formatVND(order.total)}</span>
+                    <span className="text-text-secondary text-[13px] font-bold">{time}</span>
+                  </div>
+                  <div className="text-text text-[14px] leading-snug font-medium border-t border-border/40 pt-2">
+                    {order.itemsText || 'Không có chi tiết'}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </main>
+      </div>
+    )
+  }
+
   // ---- Render ----
-  const pendingCount = getPendingCount()
-  const hasOrder = orderItems.length > 0
 
   // ---- Format Date ----
   const days = ['Chủ Nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
   const today = new Date()
   const dayName = days[today.getDay()]
   const dateOnly = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`
+
+  if (currentView === 'history') {
+    return renderHistoryView()
+  }
 
   return (
     <div className="flex flex-col h-full max-w-lg mx-auto bg-bg">
@@ -283,7 +386,12 @@ export default function App() {
           </div>
 
           {/* Card 2: Revenue / Cups */}
-          <div className="bg-primary/5 rounded-[20px] p-3.5 sm:p-4 border border-primary/10 shadow-sm flex flex-col justify-center gap-1.5 sm:gap-2 relative overflow-hidden h-full">
+          <div
+            onClick={handleOpenHistory}
+            role="button"
+            tabIndex={0}
+            className="cursor-pointer bg-primary/5 rounded-[20px] p-3.5 sm:p-4 border border-primary/10 shadow-sm flex flex-col justify-center gap-1.5 sm:gap-2 relative overflow-hidden h-full hover:bg-primary/10 active:bg-primary/15 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40"
+          >
             <div className="flex flex-row justify-between items-center gap-0.5 relative z-10">
               <span className="text-[12px] sm:text-[13px] text-text-secondary font-bold uppercase tracking-wider">Đã bán</span>
               <span className="text-[16px] sm:text-[17px] pb-1 text-text font-black tracking-tight flex items-baseline gap-1">{cupsSold} <span className="text-[12px] sm:text-[13px] font-extrabold text-text-dim">ly</span></span>
@@ -325,7 +433,7 @@ export default function App() {
         {/* ---- Menu Grid ---- */}
         <div className="grid grid-cols-2 gap-4 pt-1">
           {products.map(product => {
-            const qty = order[product.id] || 0
+            const qty = cart.filter(item => item.productId === product.id).reduce((sum, item) => sum + item.quantity, 0)
             return (
               <div
                 key={product.id}
@@ -334,11 +442,11 @@ export default function App() {
                 tabIndex={0}
                 aria-pressed={qty > 0}
                 aria-label={`Thêm ${product.name}`}
-                onClick={() => handleAddItem(product.id)}
+                onClick={() => handleAddItem(product)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    handleAddItem(product.id);
+                    handleAddItem(product);
                   }
                 }}
                 className={`menu-btn relative rounded-[1.5rem] p-4.5 sm:p-5 text-left min-h-[140px] flex flex-col justify-between border cursor-pointer transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-primary/30 ${qty > 0
@@ -351,14 +459,10 @@ export default function App() {
 
                 {/* Top: Name & Qty */}
                 <div className="relative z-10 w-full">
-                  <h3 className={`font-black text-[18px] sm:text-[19px] leading-tight break-words pt-1 pr-7 ${qty > 0 ? 'text-primary drop-shadow-sm' : 'text-text'}`}>
+                  <h3 className={`font-black text-[18px] sm:text-[19px] leading-tight break-words pt-0.25 ${qty > 0 ? 'text-primary drop-shadow-sm' : 'text-text'}`}>
                     {product.name}
                   </h3>
-                  {qty > 0 && (
-                    <span className="badge-pop absolute -top-1.5 -right-1 bg-text text-bg text-[14px] font-black w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-primary/10" aria-hidden="true">
-                      {qty}
-                    </span>
-                  )}
+
                 </div>
 
                 {/* Bottom: Price & Minus */}
@@ -367,17 +471,9 @@ export default function App() {
                     {formatVND(product.price)}
                   </span>
                   {qty > 0 && (
-                    <button
-                      id={`minus-${product.id}`}
-                      aria-label={`Giảm số lượng ${product.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDecreaseItem(product.id)
-                      }}
-                      className="shrink-0 w-[40px] h-[40px] rounded-[14px] bg-surface/90 backdrop-blur-md border border-danger/30 flex items-center justify-center hover:bg-danger/10 active:bg-danger/20 shadow-sm transition-all z-20 -mb-1 -mr-1 focus:outline-none focus:ring-2 focus:ring-danger/40"
-                    >
-                      <span className="text-danger text-[24px] font-medium leading-none mb-[2px] pointer-events-none">−</span>
-                    </button>
+                    <span className="badge-pop absolute -top-1.5 -right-1 bg-text text-bg text-[14px] font-black w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-primary/10" aria-hidden="true">
+                      {qty}
+                    </span>
                   )}
                 </div>
               </div>
@@ -386,53 +482,69 @@ export default function App() {
         </div>
       </main>
 
+      {/* ===== MINI CART ===== */}
+      {cart.length > 0 && (
+        <div className="shrink-0 bg-surface border-t border-border/80 p-4 max-h-[30vh] overflow-y-auto">
+          <div className="flex flex-col gap-2">
+            {cart.map(item => {
+              const extrasPrice = item.extras.reduce((sum, e) => sum + e.price, 0)
+              const itemTotal = (item.basePrice + extrasPrice) * item.quantity
+              const isActive = item.cartItemId === activeCartItemId || (!activeCartItemId && item === cart[cart.length - 1])
+
+              return (
+                <div
+                  key={item.cartItemId}
+                  onClick={() => setActiveCartItemId(item.cartItemId)}
+                  className={`flex items-start justify-between p-3 rounded-2xl border cursor-pointer transition-colors ${isActive ? 'border-primary/50 bg-primary/5 shadow-sm' : 'border-border/60 bg-bg hover:bg-surface-hover'}`}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-bold text-text text-[15px]">{item.name}</span>
+                    {item.extras.length > 0 && (
+                      <span className="text-primary font-bold text-[13px]">{item.extras.map(e => e.name).join(', ')}</span>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="font-black text-text text-[15px]">{formatVND(itemTotal)}</span>
+                    <button onClick={(e) => { e.stopPropagation(); handleRemoveCartItem(item.cartItemId); }} className="text-text-secondary hover:text-danger text-[13px] font-bold uppercase tracking-wider px-2 py-1 -mr-2 focus:outline-none">Xóa</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ===== FOOTER ===== */}
       <footer className="shrink-0 bg-surface border-t border-border/80 shadow-[0_-4px_24px_rgba(0,0,0,0.02)] flex flex-col">
 
         {/* Quick Extras Bar */}
-        {(baseItems.length > 0 || extraItems.length > 0) && (
+        {cart.length > 0 && (
           <div className="w-full overflow-x-auto py-3 px-6 flex gap-2.5 items-center hide-scrollbar border-b border-border/40">
             {QUICK_EXTRAS.map(ex => {
-              const qty = extras[ex.id] || 0
+              const activeItem = cart.find(item => item.cartItemId === activeCartItemId) || cart[cart.length - 1]
+              const hasExtra = activeItem?.extras.some(e => e.id === ex.id) || false
 
-              if (qty === 0) {
+              if (!hasExtra) {
                 return (
                   <button
                     key={ex.id}
-                    onClick={() => setExtras(prev => ({ ...prev, [ex.id]: 1 }))}
+                    onClick={() => handleToggleExtra(ex)}
                     className="shrink-0 h-[42px] px-4 rounded-[14px] border bg-surface-light border-border/80 text-text-secondary hover:text-text font-bold text-[14px] whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all shadow-sm"
                   >
-                    {ex.name} {ex.price > 0 ? `+${ex.price / 1000}k` : ''}
+                    {ex.name}
                   </button>
                 )
               }
 
               return (
-                <div key={ex.id} className="shrink-0 flex items-center h-[42px] rounded-[14px] border bg-primary/10 border-primary/50 text-primary overflow-hidden shadow-sm backdrop-blur-sm">
-                  <button
-                    onClick={() => setExtras(prev => {
-                      const next = { ...prev }
-                      if (next[ex.id] > 1) {
-                        next[ex.id] -= 1
-                      } else {
-                        delete next[ex.id]
-                      }
-                      return next
-                    })}
-                    className="w-11 h-full flex items-center justify-center font-bold text-[22px] active:bg-primary/20"
-                  >
-                    −
-                  </button>
-                  <span className="font-extrabold text-[13px] px-0.5 whitespace-nowrap flex items-center tracking-tight">
-                    {ex.name} <span className="flex items-center justify-center text-bg bg-primary font-black text-[12px] h-[20px] min-w-[20px] px-1.5 rounded-full ml-1.5 shadow-sm leading-none">{qty}</span>
-                  </span>
-                  <button
-                    onClick={() => setExtras(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}
-                    className="w-11 h-full flex items-center justify-center font-bold text-[20px] active:bg-primary/20"
-                  >
-                    +
-                  </button>
-                </div>
+                <button
+                  key={ex.id}
+                  onClick={() => handleToggleExtra(ex)}
+                  className="shrink-0 flex items-center gap-1.5 h-[42px] px-4 rounded-[14px] border bg-primary/10 border-primary/50 text-primary font-bold text-[14px] whitespace-nowrap focus:outline-none shadow-sm backdrop-blur-sm active:bg-primary/20"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary mb-[1px]"></span>
+                  {ex.name}
+                </button>
               )
             })}
           </div>
