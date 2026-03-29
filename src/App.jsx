@@ -284,12 +284,12 @@ export default function App() {
 
           {/* Card 2: Revenue / Cups */}
           <div className="bg-primary/5 rounded-[20px] p-3.5 sm:p-4 border border-primary/10 shadow-sm flex flex-col justify-center gap-1.5 sm:gap-2 relative overflow-hidden h-full">
-            <div className="flex flex-row justify-between items-center aligns-center gap-0.5 relative z-10">
+            <div className="flex flex-row justify-between items-center gap-0.5 relative z-10">
               <span className="text-[12px] sm:text-[13px] text-text-secondary font-bold uppercase tracking-wider">Đã bán</span>
-              <span className="text-[16px] sm:text-[17px] text-text font-black tracking-tight flex items-baseline gap-1">{cupsSold} <span className="text-[12px] sm:text-[13px] font-extrabold text-text-dim">ly</span></span>
+              <span className="text-[16px] sm:text-[17px] pb-1 text-text font-black tracking-tight flex items-baseline gap-1">{cupsSold} <span className="text-[12px] sm:text-[13px] font-extrabold text-text-dim">ly</span></span>
             </div>
             <div className="w-full h-[1px] bg-primary/15 rounded-full relative z-10"></div>
-            <div className="flex flex-col justify-between items-center gap-1 relative z-10 pt-1">
+            <div className="flex flex-col justify-between items-center gap-1 relative z-10">
               <span className="text-[13px] sm:text-[14px] text-text-secondary font-bold uppercase tracking-wider">Doanh thu</span>
               <span className="text-[17px] sm:text-[18px] text-primary font-black tracking-tight align-right">{formatVND(revenue)}</span>
             </div>
