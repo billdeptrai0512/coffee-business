@@ -17,11 +17,12 @@ function savePendingOrders(orders) {
     localStorage.setItem(PENDING_ORDERS_KEY, JSON.stringify(orders))
 }
 
-export function addPendingOrder(orderItems, total) {
+export function addPendingOrder(orderItems, total, paymentMethod = null) {
     const pending = getPendingOrders()
     pending.push({
         orderItems,
         total,
+        paymentMethod,
         createdAt: new Date().toISOString(),
     })
     savePendingOrders(pending)
@@ -40,7 +41,7 @@ export function useOfflineSync(onSyncComplete) {
 
         for (const order of pending) {
             try {
-                await submitOrder(order.orderItems, order.total)
+                await submitOrder(order.orderItems, order.total, order.paymentMethod)
             } catch (err) {
                 console.error('Sync failed for order:', err)
                 failed.push(order)

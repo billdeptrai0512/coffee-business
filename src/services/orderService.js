@@ -122,6 +122,7 @@ export async function fetchTodayOrders() {
         .select(`
             id,
             total,
+            payment_method,
             created_at,
             order_items (
                 quantity,
@@ -158,13 +159,16 @@ export async function fetchRecipes(productIds) {
 
 // Submit a complete order to Supabase
 // cart: [{ cartItemId, productId, quantity, basePrice, extras }]
-export async function submitOrder(cart, total) {
+export async function submitOrder(cart, total, paymentMethod = null) {
     if (!supabase) throw new Error('No Supabase connection')
 
-    // 1. Insert order
+    // 1. Insert order (with payment_method at order level)
+    const orderPayload = { total }
+    if (paymentMethod) orderPayload.payment_method = paymentMethod
+
     const { data: order, error: orderError } = await supabase
         .from('orders')
-        .insert({ total })
+        .insert(orderPayload)
         .select()
         .single()
 
@@ -178,7 +182,7 @@ export async function submitOrder(cart, total) {
             quantity: item.quantity,
         }
 
-        // Append options text if the user selected any extras
+        // Append options text if the user selected any extras (excludes payment method)
         const optionsText = item.extras?.length > 0 ? item.extras.map(e => e.name).join(', ') : null;
         if (optionsText) {
             payload.options = optionsText;
