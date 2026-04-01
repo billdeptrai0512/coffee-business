@@ -1,21 +1,26 @@
 import { useState } from 'react'
-import { formatVND } from '../utils'
+import { formatVND, calculateProductCost } from '../utils'
 import { getPendingOrders } from '../hooks/useOfflineSync'
 
-export default function HistoryView({ todayOrders, isLoadingHistory, onBack, onDeleteOrder }) {
+export default function HistoryView({ todayOrders, recipes, products, ingredientCosts, isLoadingHistory, onBack, onDeleteOrder, onOpenRecipeManager }) {
     const [deletingId, setDeletingId] = useState(null)
     const formattedOnline = todayOrders.map(o => ({
         id: o.id,
         total: o.total,
+        cost: o.order_items ? o.order_items.reduce((sum, i) => sum + (calculateProductCost(i.product_id, recipes, ingredientCosts) * i.quantity), 0) : 0,
         createdAt: o.created_at,
         isOffline: false,
         paymentMethod: o.payment_method || null,
-        itemsText: o.order_items ? o.order_items.map(i => {
+        items: o.order_items ? o.order_items.map(i => {
             const options = i.options
                 ? i.options.split(', ').filter(opt => opt !== 'Tiền mặt' && opt !== 'MoMo').join(' - ')
                 : ''
-            return `${i.quantity} ${i.products?.name}${options ? ` (${options})` : ''}`
-        }).join('\n') : ''
+            const pName = products?.find(p => p.id === i.product_id)?.name || i.products?.name || '☕'
+            return {
+                text: `${i.quantity} ${pName}${options ? ` (${options})` : ''}`,
+                cost: calculateProductCost(i.product_id, recipes, ingredientCosts) * i.quantity
+            }
+        }) : []
     }))
 
     const pending = getPendingOrders()
@@ -25,25 +30,30 @@ export default function HistoryView({ todayOrders, isLoadingHistory, onBack, onD
         .map((o, idx) => ({
             id: `offline-${idx}`,
             total: o.total,
+            cost: (o.cart || o.orderItems || []).reduce((sum, i) => sum + (calculateProductCost(i.productId, recipes, ingredientCosts) * i.quantity), 0),
             createdAt: o.createdAt,
             isOffline: true,
             paymentMethod: o.paymentMethod || null,
-            itemsText: o.cart
+            items: o.cart
                 ? o.cart.map(i => {
                     const extras = i.extras.filter(e => e.name !== 'Tiền mặt' && e.name !== 'MoMo')
-                    return `${i.quantity} ${i.name}${extras.length ? ` (${extras.map(e => e.name).join(' - ')})` : ''}`
-                }).join('\n')
-                : o.orderItems ? o.orderItems.map(i => `${i.quantity} ${i.name}`).join('\n') : ''
+                    return {
+                        text: `${i.quantity} ${i.name}${extras.length ? ` (${extras.map(e => e.name).join(' - ')})` : ''}`,
+                        cost: calculateProductCost(i.productId, recipes, ingredientCosts) * i.quantity
+                    }
+                })
+                : o.orderItems ? o.orderItems.map(i => ({
+                    text: `${i.quantity} ${i.name}`,
+                    cost: calculateProductCost(i.productId, recipes, ingredientCosts) * i.quantity
+                })) : []
         }))
 
     const allOrders = [...formattedOnline, ...formattedOffline].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
     // --- Stats ---
     const totalRevenue = allOrders.reduce((sum, o) => sum + o.total, 0)
-    const cashOrders = allOrders.filter(o => o.paymentMethod === 'cash')
-    const transferOrders = allOrders.filter(o => o.paymentMethod === 'transfer')
-    const cashRevenue = cashOrders.reduce((sum, o) => sum + o.total, 0)
-    const transferRevenue = transferOrders.reduce((sum, o) => sum + o.total, 0)
+    const totalCost = allOrders.reduce((sum, o) => sum + o.cost, 0)
+    const totalProfit = totalRevenue - totalCost
 
     // Running totals (oldest first to accumulate)
     const chronological = [...allOrders].reverse()
@@ -66,18 +76,22 @@ export default function HistoryView({ todayOrders, isLoadingHistory, onBack, onD
                     </button>
 
                     <div className="flex flex-row gap-2 flex-1">
-                        {/* <div className="flex-1 bg-primary/10 border border-primary/20 rounded-[14px] px-3 py-2.5 flex flex-col items-center">
-                            <span className="text-[10px] font-bold text-primary/70 uppercase">TOTAL</span>
-                            <span className="text-[14px] font-black text-primary leading-none mt-1">{allOrders.length}</span>
+                        <div
+                            onClick={onOpenRecipeManager}
+                            className="flex-1 bg-danger/10 border border-danger/20 rounded-[14px] px-2 py-2 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-danger/15 active:bg-danger/20 transition-colors"
+                        >
+                            <span className="text-[12px] font-black text-danger uppercase line-clamp-1">Chi phí</span>
+                            <span className="text-[12px] font-bold text-danger/80 leading-none mt-1 tabular-nums">{formatVND(totalCost)}</span>
+                        </div>
+                        <div className="flex-1 bg-success/10 border border-success/20 rounded-[14px] px-2 py-2 flex flex-col items-center justify-center text-center">
+                            <span className="text-[12px] font-black text-success uppercase line-clamp-1">Doanh thu</span>
+                            <span className="text-[12px] font-bold text-success/80 leading-none mt-1 tabular-nums">{formatVND(totalRevenue)}</span>
+                        </div>
+
+                        {/* <div className="flex-1 bg-success/10 border border-success/20 rounded-[14px] px-2 py-2 flex flex-col items-center justify-center text-center">
+                            <span className="text-[12px] font-black text-success uppercase line-clamp-1">Lợi nhuận</span>
+                            <span className="text-[12px] font-bold text-success/80 leading-none mt-1 tabular-nums">{formatVND(totalProfit)}</span>
                         </div> */}
-                        <div className="flex-1 bg-green-500/10 border border-green-500/20 rounded-[14px] px-3 py-2.5 flex flex-col items-center">
-                            <span className="text-[14px] font-black text-green-600 uppercase">Tiền mặt</span>
-                            <span className="text-[13px] font-bold text-green-600/70 leading-none mt-1 tabular-nums">{formatVND(cashRevenue)}</span>
-                        </div>
-                        <div className="flex-1 bg-blue-500/10 border border-blue-500/20 rounded-[14px] px-3 py-2.5 flex flex-col items-center">
-                            <span className="text-[14px] font-black text-blue-600 uppercase">MoMo</span>
-                            <span className="text-[13px] font-bold text-blue-600/70 leading-none mt-1 tabular-nums">{formatVND(transferRevenue)}</span>
-                        </div>
                     </div>
                 </div>
             </header>
@@ -105,29 +119,35 @@ export default function HistoryView({ todayOrders, isLoadingHistory, onBack, onD
                                 )}
                                 <div className="flex justify-between items-center mb-1">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-text font-black text-[14px] text-primary">+ {formatVND(order.total)}</span>
-                                        {order.paymentMethod && (
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${order.paymentMethod === 'cash'
-                                                ? 'bg-green-500/15 text-green-600'
-                                                : 'bg-blue-500/15 text-blue-600'
-                                                }`}>
-                                                {order.paymentMethod === 'cash' ? 'Tiền mặt' : 'MOMO'}
-                                            </span>
-                                        )}
+                                        <span className="font-black text-[14px] text-primary">+ {formatVND(order.total)}</span>
                                     </div>
-                                    <span className="text-primary leading-none text-[14px] font-bold tabular-nums">
+                                    <span className="text-success leading-none text-[14px] font-bold tabular-nums">
                                         {formatVND(runningTotals.get(order.id) || 0)}
                                     </span>
                                 </div>
-                                <div className="flex justify-between items-center mb-1  border-t border-border/40 pt-2">
-                                    <span className="text-text text-[14px] leading-snug font-medium flex-1 mr-2 max-w-[65%] whitespace-pre-wrap">{order.itemsText || 'Không có chi tiết'}</span>
-                                    <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex justify-between items-start mb-1 border-t border-border/40 pt-2">
+                                    <div className="flex flex-col flex-1 gap-1.5 mt-0.5 mr-2">
+                                        {order.items?.length > 0 ? (
+                                            order.items.map((item, idx) => (
+                                                <div key={idx} className="flex flex-row gap-2 items-start w-full">
+                                                    <span className="text-text text-[14px] leading-snug font-medium max-w-[85%] whitespace-pre-wrap">{item.text}</span>
+                                                    <div className="flex gap-2 text-[11px] font-medium mt-0.5 items-start shrink-0">
+                                                        {item.cost > 0 && <span className="text-danger bg-danger/10 px-1.5 py-0.5 rounded-md">{formatVND(item.cost)}</span>}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <span className="text-text text-[14px] leading-snug font-medium whitespace-pre-wrap">Không có chi tiết</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0 mt-0.5">
                                         {!order.isOffline ? (
                                             <span
-                                                className="text-red-500 text-[14px] font-bold cursor-pointer hover:text-red-400 active:text-red-600 transition-colors select-none disabled:opacity-40"
+                                                className="text-text-secondary text-[14px] text-end font-bold cursor-pointer underline decoration-dashed decoration-text-secondary/50 underline-offset-4 hover:text-danger hover:decoration-danger active:text-danger/80 transition-all select-none disabled:opacity-40"
                                                 onClick={() => {
                                                     if (deletingId === order.id) return
-                                                    if (window.confirm(`Xóa đơn ${order.itemsText || ''} (${formatVND(order.total)})?\n\nHành động này không thể hoàn tác!`)) {
+                                                    const text = order.items?.map(i => i.text).join(', ') || ''
+                                                    if (window.confirm(`Xóa đơn ${text} (${formatVND(order.total)})?\n\nHành động này không thể hoàn tác!`)) {
                                                         setDeletingId(order.id)
                                                         onDeleteOrder(order.id).finally(() => setDeletingId(null))
                                                     }

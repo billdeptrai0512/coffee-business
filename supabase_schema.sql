@@ -23,6 +23,12 @@ CREATE TABLE inventory (
   stock REAL NOT NULL DEFAULT 0
 );
 
+-- Ingredient costs (unit cost per ingredient)
+CREATE TABLE ingredient_costs (
+  ingredient TEXT PRIMARY KEY,
+  unit_cost INTEGER NOT NULL DEFAULT 0 -- cost per unit in VND
+);
+
 -- Orders
 CREATE TABLE orders (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -93,6 +99,20 @@ INSERT INTO inventory (ingredient, stock) VALUES
   ('orange', 50),            -- 50 oranges
   ('cup', 200),              -- 200 cups
   ('lid', 200);              -- 200 lids
+
+-- Ingredient costs: unit cost per ingredient (VND)
+INSERT INTO ingredient_costs (ingredient, unit_cost) VALUES
+  ('coffee_g', 250),           -- 250đ/g
+  ('cacao_powder_g', 100),     -- 100đ/g
+  ('matcha_powder_g', 100),    -- 100đ/g
+  ('sugar', 19),               -- 19đ/g
+  ('rich_g', 150),             -- 150đ/g
+  ('condensed_milk_ml', 60),   -- 60đ/ml
+  ('fresh_milk_ml', 35),       -- 35đ/ml
+  ('salt_cream_ml', 50),       -- 50đ/ml
+  ('sugar_syrup_ml', 30),      -- 30đ/ml
+  ('cup', 800),                -- 800đ/ly
+  ('lid', 200);                -- 200đ/nắp
 
 -- =============================================
 -- Enable Realtime for orders and inventory

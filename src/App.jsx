@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './lib/supabaseClient'
-import { fetchProducts, fetchTodayRevenue, fetchInventory, submitOrder, fetchAllRecipes, fetchTodayCupsSold, fetchTodayOrders, deleteOrder } from './services/orderService'
+import { fetchProducts, fetchTodayRevenue, fetchInventory, submitOrder, fetchAllRecipes, fetchTodayCupsSold, fetchTodayOrders, deleteOrder, fetchIngredientCosts } from './services/orderService'
 import { useOfflineSync, addPendingOrder } from './hooks/useOfflineSync'
 import { INGREDIENT_NAMES, LOW_STOCK_THRESHOLD, DAY_NAMES } from './constants'
+import { calculateProductCost } from './utils'
 import './index.css'
 
 // Components
@@ -13,6 +14,7 @@ import MiniCart from './components/MiniCart'
 import OrderFooter from './components/OrderFooter'
 import Toast from './components/Toast'
 import HistoryView from './components/HistoryView'
+import RecipeManager from './components/RecipeManager'
 import PWAUpdatePrompt from './components/PWAUpdatePrompt'
 
 export default function App() {
@@ -28,9 +30,11 @@ export default function App() {
   const [activeCartItemId, setActiveCartItemId] = useState(null)
 
   const [revenue, setRevenue] = useState(() => Number(localStorage.getItem('pos_revenue')) || 0)
+  const [totalCost, setTotalCost] = useState(() => Number(localStorage.getItem('pos_total_cost')) || 0)
   const [cupsSold, setCupsSold] = useState(() => Number(localStorage.getItem('pos_cups')) || 0)
   const [inventory, setInventory] = useState(() => loadLocalJSON('pos_inventory', {}))
   const [recipes, setRecipes] = useState([])
+  const [ingredientCosts, setIngredientCosts] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [toast, setToast] = useState(null)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
@@ -62,15 +66,17 @@ export default function App() {
   useEffect(() => {
     async function load() {
       try {
-        const [prods, rev, inv, recs, cups] = await Promise.all([
+        const [prods, rev, inv, recs, cups, costs] = await Promise.all([
           fetchProducts(),
           fetchTodayRevenue(),
           fetchInventory(),
           fetchAllRecipes(),
-          fetchTodayCupsSold()
+          fetchTodayCupsSold(),
+          fetchIngredientCosts()
         ])
         setProducts(prods)
         setRecipes(recs)
+        setIngredientCosts(costs)
 
         if (supabase) {
           setRevenue(rev)
@@ -107,10 +113,12 @@ export default function App() {
         if (navigator.onLine && supabase) {
           fetchTodayRevenue().then(setRevenue)
           fetchTodayCupsSold().then(setCupsSold)
+          setTotalCost(0) // Client-side tracking reset on new day
           showToast('Đã qua ngày mới, dữ liệu đã được làm mới!', 'info')
         } else {
           setRevenue(0)
           setCupsSold(0)
+          setTotalCost(0)
         }
         localStorage.setItem('pos_current_date', todayStr)
       } else if (!storedDate) {
@@ -150,9 +158,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('pos_cart', JSON.stringify(cart))
     localStorage.setItem('pos_revenue', revenue.toString())
+    localStorage.setItem('pos_total_cost', totalCost.toString())
     localStorage.setItem('pos_cups', cupsSold.toString())
     localStorage.setItem('pos_inventory', JSON.stringify(inventory))
-  }, [cart, revenue, cupsSold, inventory])
+  }, [cart, revenue, totalCost, cupsSold, inventory])
 
   // ---- Derived values ----
   const total = cart.reduce((sum, item) => {
@@ -212,16 +221,23 @@ export default function App() {
     if (cart.length === 0 || isSubmitting) return
     setIsSubmitting(true)
 
+    const cartCost = cart.reduce((sum, item) => {
+      const costPerItem = calculateProductCost(item.productId, recipes, ingredientCosts);
+      return sum + (costPerItem * item.quantity);
+    }, 0);
+
     try {
       if (navigator.onLine && supabase) {
         await submitOrder(cart, total)
         const [rev, cups] = await Promise.all([fetchTodayRevenue(), fetchTodayCupsSold()])
         setRevenue(rev)
+        setTotalCost(prev => prev + cartCost)
         setCupsSold(cups)
         showToast(`Tạo thành công`, 'success')
       } else {
         addPendingOrder(cart, total)
         setRevenue(prev => prev + total)
+        setTotalCost(prev => prev + cartCost)
         setCupsSold(prev => prev + orderCount)
         showToast(`Lưu offline (${getPendingCount()} đơn chờ)`, 'warning')
       }
@@ -231,6 +247,7 @@ export default function App() {
       console.error('Submit error:', err)
       addPendingOrder(cart, total)
       setRevenue(prev => prev + total)
+      setTotalCost(prev => prev + cartCost)
       setCupsSold(prev => prev + orderCount)
       showToast('Lỗi mạng – đã lưu offline', 'warning')
       setCart([])
@@ -274,14 +291,39 @@ export default function App() {
   const dateOnly = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`
 
   // ---- Render ----
+  // Reload recipes + costs after editing in RecipeManager
+  async function handleRecipeDataChanged() {
+    const [recs, costs] = await Promise.all([fetchAllRecipes(), fetchIngredientCosts()])
+    setRecipes(recs)
+    setIngredientCosts(costs)
+  }
+
+  if (currentView === 'recipe-manager') {
+    return (
+      <>
+        <RecipeManager
+          products={products}
+          recipes={recipes}
+          onBack={() => setCurrentView('history')}
+          onDataChanged={handleRecipeDataChanged}
+        />
+        <PWAUpdatePrompt />
+      </>
+    )
+  }
+
   if (currentView === 'history') {
     return (
       <>
         <HistoryView
           todayOrders={todayOrders}
+          recipes={recipes}
+          products={products}
+          ingredientCosts={ingredientCosts}
           isLoadingHistory={isLoadingHistory}
           onBack={() => setCurrentView('pos')}
           onDeleteOrder={handleDeleteOrder}
+          onOpenRecipeManager={() => setCurrentView('recipe-manager')}
         />
         <PWAUpdatePrompt />
       </>
@@ -296,6 +338,7 @@ export default function App() {
         dateOnly={dateOnly}
         cupsSold={cupsSold}
         revenue={revenue}
+        totalCost={totalCost}
         onOpenHistory={handleOpenHistory}
       />
 

@@ -62,7 +62,7 @@ export default defineConfig({
   ],
   server: {
     allowedHosts: [
-      'middle-connector-artist-breakdown.trycloudflare.com'
+      'tumor-varying-thoughts-scanning.trycloudflare.com'
     ]
   }
 })
