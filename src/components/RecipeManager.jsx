@@ -8,6 +8,7 @@ import {
     deleteRecipeRow,
     upsertIngredientCost
 } from '../services/orderService'
+import { useAuth } from '../contexts/AuthContext'
 
 // All known ingredients for the "add ingredient" dropdown
 const ALL_INGREDIENTS = Object.keys(INGREDIENT_NAMES)
@@ -37,6 +38,9 @@ function getIngredientUnit(key) {
 }
 
 export default function RecipeManager({ products, recipes: initialRecipes, onBack, onDataChanged }) {
+    const { profile } = useAuth()
+    const activeManagerId = profile?.role === 'manager' ? profile.id : profile?.manager_id
+
     const [ingredientCosts, setIngredientCosts] = useState({})
     const [recipes, setRecipes] = useState(initialRecipes || [])
     const [expandedProduct, setExpandedProduct] = useState(null)
@@ -47,8 +51,8 @@ export default function RecipeManager({ products, recipes: initialRecipes, onBac
     const [addingIngredient, setAddingIngredient] = useState(null) // productId
 
     useEffect(() => {
-        fetchIngredientCosts().then(setIngredientCosts)
-    }, [])
+        fetchIngredientCosts(activeManagerId).then(setIngredientCosts)
+    }, [activeManagerId])
 
     // Calculate cost of one product
     function productCost(productId) {
@@ -62,7 +66,7 @@ export default function RecipeManager({ products, recipes: initialRecipes, onBac
     async function saveAmount(productId, ingredient, newAmount) {
         setSaving(true)
         try {
-            await upsertRecipe(productId, ingredient, newAmount)
+            await upsertRecipe(productId, ingredient, newAmount, activeManagerId)
             setRecipes(prev => prev.map(r =>
                 r.product_id === productId && r.ingredient === ingredient
                     ? { ...r, amount: newAmount }
@@ -81,7 +85,7 @@ export default function RecipeManager({ products, recipes: initialRecipes, onBac
     async function saveCost(ingredient, newCost) {
         setSaving(true)
         try {
-            await upsertIngredientCost(ingredient, newCost)
+            await upsertIngredientCost(ingredient, newCost, activeManagerId)
             setIngredientCosts(prev => ({ ...prev, [ingredient]: newCost }))
             onDataChanged?.()
         } catch (err) {
@@ -97,7 +101,7 @@ export default function RecipeManager({ products, recipes: initialRecipes, onBac
         if (!window.confirm(`Xóa ${ingredientLabel(ingredient)} khỏi công thức?`)) return
         setSaving(true)
         try {
-            await deleteRecipeRow(productId, ingredient)
+            await deleteRecipeRow(productId, ingredient, activeManagerId)
             setRecipes(prev => prev.filter(r => !(r.product_id === productId && r.ingredient === ingredient)))
             onDataChanged?.()
         } catch (err) {
@@ -111,7 +115,7 @@ export default function RecipeManager({ products, recipes: initialRecipes, onBac
     async function handleAddIngredient(productId, ingredient) {
         setSaving(true)
         try {
-            await upsertRecipe(productId, ingredient, 0)
+            await upsertRecipe(productId, ingredient, 0, activeManagerId)
             setRecipes(prev => [...prev, { product_id: productId, ingredient, amount: 0 }])
             setAddingIngredient(null)
             onDataChanged?.()

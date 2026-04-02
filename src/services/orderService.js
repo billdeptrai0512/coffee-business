@@ -114,16 +114,20 @@ export async function fetchProducts() {
     return data.length > 0 ? data : DEMO_PRODUCTS
 }
 
-// Fetch today's total revenue
-export async function fetchTodayRevenue() {
+// Fetch today's total revenue (optionally scoped by address)
+export async function fetchTodayRevenue(addressId) {
     if (!supabase) return 0
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('orders')
         .select('total')
         .gte('created_at', today.toISOString())
+
+    if (addressId) query = query.eq('address_id', addressId)
+
+    const { data, error } = await query
 
     if (error) {
         console.error('fetchTodayRevenue error:', error)
@@ -132,16 +136,20 @@ export async function fetchTodayRevenue() {
     return data.reduce((sum, o) => sum + o.total, 0)
 }
 
-// Fetch today's total cups sold
-export async function fetchTodayCupsSold() {
+// Fetch today's total cups sold (optionally scoped by address)
+export async function fetchTodayCupsSold(addressId) {
     if (!supabase) return 0
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    const { data: orders, error: ordersError } = await supabase
+    let query = supabase
         .from('orders')
         .select('id')
         .gte('created_at', today.toISOString())
+
+    if (addressId) query = query.eq('address_id', addressId)
+
+    const { data: orders, error: ordersError } = await query
 
     if (ordersError || !orders?.length) return 0
 
@@ -159,13 +167,13 @@ export async function fetchTodayCupsSold() {
     return items.reduce((sum, i) => sum + i.quantity, 0)
 }
 
-// Fetch all orders for today, newest first
-export async function fetchTodayOrders() {
+// Fetch all orders for today, newest first (optionally scoped by address)
+export async function fetchTodayOrders(addressId) {
     if (!supabase) return []
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('orders')
         .select(`
             id,
@@ -182,7 +190,10 @@ export async function fetchTodayOrders() {
             )
         `)
         .gte('created_at', today.toISOString())
-        .order('created_at', { ascending: false })
+
+    if (addressId) query = query.eq('address_id', addressId)
+
+    const { data, error } = await query.order('created_at', { ascending: false })
 
     if (error) {
         console.error('fetchTodayOrders error:', error)
@@ -197,16 +208,40 @@ export async function fetchInventory() {
 }
 
 // Fetch all recipes from Supabase, fallback to demo
-export async function fetchAllRecipes() {
+export async function fetchAllRecipes(managerId) {
     if (!supabase) return DEMO_RECIPES
-    const { data, error } = await supabase
-        .from('recipes')
-        .select('product_id, ingredient, amount')
+    let query = supabase.from('recipes').select('product_id, ingredient, amount, manager_id')
+
+    if (managerId) {
+        query = query.or(`manager_id.eq.${managerId},manager_id.is.null`)
+    } else {
+        query = query.is('manager_id', null)
+    }
+
+    const { data, error } = await query
     if (error) {
         console.error('fetchAllRecipes error:', error)
         return DEMO_RECIPES
     }
-    return data.length > 0 ? data : DEMO_RECIPES
+
+    if (!data || data.length === 0) return DEMO_RECIPES
+
+    // Group defaults by productId
+    const defaultData = data.filter(d => d.manager_id === null)
+    const managerData = data.filter(d => d.manager_id === managerId)
+
+    const managerProductIds = new Set(managerData.map(d => d.product_id))
+
+    const finalRecipes = []
+    finalRecipes.push(...managerData)
+
+    for (const d of defaultData) {
+        if (!managerProductIds.has(d.product_id)) {
+            finalRecipes.push(d)
+        }
+    }
+
+    return finalRecipes.length > 0 ? finalRecipes : DEMO_RECIPES
 }
 
 // Fetch recipes for a list of product IDs
@@ -224,35 +259,77 @@ export async function fetchRecipes(productIds) {
 }
 
 // Fetch ingredient costs from Supabase, fallback to constants
-
-export async function fetchIngredientCosts() {
+export async function fetchIngredientCosts(managerId) {
     if (!supabase) return { ...DEFAULT_COSTS }
-    const { data, error } = await supabase
-        .from('ingredient_costs')
-        .select('ingredient, unit_cost')
+    let query = supabase.from('ingredient_costs').select('ingredient, unit_cost, manager_id')
+
+    if (managerId) {
+        query = query.or(`manager_id.eq.${managerId},manager_id.is.null`)
+    } else {
+        query = query.is('manager_id', null)
+    }
+
+    const { data, error } = await query
     if (error) {
         console.error('fetchIngredientCosts error:', error)
         return { ...DEFAULT_COSTS }
     }
     if (!data || data.length === 0) return { ...DEFAULT_COSTS }
-    const costs = {}
-    for (const row of data) {
-        costs[row.ingredient] = row.unit_cost
-    }
+
+    const costs = { ...DEFAULT_COSTS }
+    const defaultData = data.filter(d => d.manager_id === null)
+    const managerData = data.filter(d => d.manager_id === managerId)
+
+    for (const d of defaultData) costs[d.ingredient] = d.unit_cost
+    for (const d of managerData) costs[d.ingredient] = d.unit_cost
+
     return costs
 }
 
+// Utility to ensure a manager has a copy of the default recipe for a product before modifying
+async function ensureManagerRecipe(productId, managerId) {
+    if (!supabase || !managerId) return
+
+    const { data } = await supabase
+        .from('recipes')
+        .select('id')
+        .eq('product_id', productId)
+        .eq('manager_id', managerId)
+        .limit(1)
+
+    if (!data || data.length === 0) {
+        // clone default recipe for this product
+        const { data: defaults } = await supabase
+            .from('recipes')
+            .select('product_id, ingredient, amount')
+            .eq('product_id', productId)
+            .is('manager_id', null)
+
+        if (defaults && defaults.length > 0) {
+            const inserts = defaults.map(d => ({ ...d, manager_id: managerId }))
+            await supabase.from('recipes').insert(inserts)
+        }
+    }
+}
+
 // Upsert a recipe row (insert or update ingredient amount for a product)
-export async function upsertRecipe(productId, ingredient, amount) {
+export async function upsertRecipe(productId, ingredient, amount, managerId = null) {
     if (!supabase) throw new Error('No Supabase connection')
 
-    // Check if exists
-    const { data: existing } = await supabase
+    if (managerId) {
+        await ensureManagerRecipe(productId, managerId)
+    }
+
+    let query = supabase
         .from('recipes')
         .select('id')
         .eq('product_id', productId)
         .eq('ingredient', ingredient)
-        .maybeSingle()
+
+    if (managerId) query = query.eq('manager_id', managerId)
+    else query = query.is('manager_id', null)
+
+    const { data: existing } = await query.maybeSingle()
 
     if (existing) {
         const { error } = await supabase
@@ -261,41 +338,65 @@ export async function upsertRecipe(productId, ingredient, amount) {
             .eq('id', existing.id)
         if (error) throw error
     } else {
+        const payload = { product_id: productId, ingredient, amount }
+        if (managerId) payload.manager_id = managerId
         const { error } = await supabase
             .from('recipes')
-            .insert({ product_id: productId, ingredient, amount })
+            .insert(payload)
         if (error) throw error
     }
 }
 
 // Delete a recipe row
-export async function deleteRecipeRow(productId, ingredient) {
+export async function deleteRecipeRow(productId, ingredient, managerId = null) {
     if (!supabase) throw new Error('No Supabase connection')
-    const { error } = await supabase
+    if (managerId) {
+        await ensureManagerRecipe(productId, managerId)
+    }
+
+    let query = supabase
         .from('recipes')
         .delete()
         .eq('product_id', productId)
         .eq('ingredient', ingredient)
+
+    if (managerId) query = query.eq('manager_id', managerId)
+    else query = query.is('manager_id', null)
+
+    const { error } = await query
     if (error) throw error
 }
 
 // Upsert an ingredient cost
-export async function upsertIngredientCost(ingredient, unitCost) {
+export async function upsertIngredientCost(ingredient, unitCost, managerId = null) {
     if (!supabase) throw new Error('No Supabase connection')
-    const { error } = await supabase
-        .from('ingredient_costs')
-        .upsert({ ingredient, unit_cost: unitCost }, { onConflict: 'ingredient' })
-    if (error) throw error
+
+    let query = supabase.from('ingredient_costs').select('id').eq('ingredient', ingredient)
+    if (managerId) query = query.eq('manager_id', managerId)
+    else query = query.is('manager_id', null)
+
+    const { data: existing } = await query.maybeSingle()
+
+    if (existing) {
+        const { error } = await supabase.from('ingredient_costs').update({ unit_cost: unitCost }).eq('id', existing.id)
+        if (error) throw error
+    } else {
+        const payload = { ingredient, unit_cost: unitCost }
+        if (managerId) payload.manager_id = managerId
+        const { error } = await supabase.from('ingredient_costs').insert(payload)
+        if (error) throw error
+    }
 }
 
 // Submit a complete order to Supabase
 // cart: [{ cartItemId, productId, quantity, basePrice, extras }]
-export async function submitOrder(cart, total, paymentMethod = null) {
+export async function submitOrder(cart, total, paymentMethod = null, addressId = null) {
     if (!supabase) throw new Error('No Supabase connection')
 
-    // 1. Insert order (with payment_method at order level)
+    // 1. Insert order (with payment_method and address_id at order level)
     const orderPayload = { total }
     if (paymentMethod) orderPayload.payment_method = paymentMethod
+    if (addressId) orderPayload.address_id = addressId
 
     const { data: order, error: orderError } = await supabase
         .from('orders')

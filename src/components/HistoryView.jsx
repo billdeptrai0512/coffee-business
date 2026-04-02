@@ -76,22 +76,27 @@ export default function HistoryView({ todayOrders, recipes, products, ingredient
                     </button>
 
                     <div className="flex flex-row gap-2 flex-1">
-                        <div
-                            onClick={onOpenRecipeManager}
-                            className="flex-1 bg-danger/10 border border-danger/20 rounded-[14px] px-2 py-2 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-danger/15 active:bg-danger/20 transition-colors"
-                        >
-                            <span className="text-[12px] font-black text-danger uppercase line-clamp-1">Chi phí</span>
-                            <span className="text-[12px] font-bold text-danger/80 leading-none mt-1 tabular-nums">{formatVND(totalCost)}</span>
+
+                        <div className="flex-1 bg-primary/5 border border-primary/10 shadow-sm  rounded-[14px] px-2 py-2 flex flex-col items-center justify-center text-center">
+                            <span className="text-[12px] font-black text-primary uppercase line-clamp-1">Tổng cộng</span>
+                            <span className="text-[12px] font-bold text-primary/80 leading-none mt-1 tabular-nums">{allOrders.length} ly</span>
+                            {/* <span className="text-[12px] font-bold text-success/80 leading-none mt-1 tabular-nums">{cupSold}</span> */}
                         </div>
+
                         <div className="flex-1 bg-success/10 border border-success/20 rounded-[14px] px-2 py-2 flex flex-col items-center justify-center text-center">
                             <span className="text-[12px] font-black text-success uppercase line-clamp-1">Doanh thu</span>
                             <span className="text-[12px] font-bold text-success/80 leading-none mt-1 tabular-nums">{formatVND(totalRevenue)}</span>
                         </div>
 
-                        {/* <div className="flex-1 bg-success/10 border border-success/20 rounded-[14px] px-2 py-2 flex flex-col items-center justify-center text-center">
-                            <span className="text-[12px] font-black text-success uppercase line-clamp-1">Lợi nhuận</span>
-                            <span className="text-[12px] font-bold text-success/80 leading-none mt-1 tabular-nums">{formatVND(totalProfit)}</span>
-                        </div> */}
+                        {onOpenRecipeManager && (
+                            <div
+                                onClick={onOpenRecipeManager}
+                                className="flex-1 bg-danger/10 border border-danger/20 rounded-[14px] px-2 py-2 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-danger/15 active:bg-danger/20 transition-colors"
+                            >
+                                <span className="text-[12px] font-black text-danger uppercase line-clamp-1">Chi phí</span>
+                                <span className="text-[12px] font-bold text-danger/80 leading-none mt-1 tabular-nums">{formatVND(totalCost)}</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </header>
@@ -125,7 +130,7 @@ export default function HistoryView({ todayOrders, recipes, products, ingredient
                                         {formatVND(runningTotals.get(order.id) || 0)}
                                     </span>
                                 </div>
-                                <div className="flex justify-between items-start mb-1 border-t border-border/40 pt-2">
+                                <div className="flex justify-between items-stretch mb-1 border-t border-border/40 pt-2">
                                     <div className="flex flex-col flex-1 gap-1.5 mt-0.5 mr-2">
                                         {order.items?.length > 0 ? (
                                             order.items.map((item, idx) => (
@@ -140,7 +145,7 @@ export default function HistoryView({ todayOrders, recipes, products, ingredient
                                             <span className="text-text text-[14px] leading-snug font-medium whitespace-pre-wrap">Không có chi tiết</span>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2 shrink-0 mt-0.5">
+                                    <div className="flex flex-col justify-end items-end gap-2 shrink-0 mt-0.5">
                                         {!order.isOffline ? (
                                             <span
                                                 className="text-text-secondary text-[14px] text-end font-bold cursor-pointer underline decoration-dashed decoration-text-secondary/50 underline-offset-4 hover:text-danger hover:decoration-danger active:text-danger/80 transition-all select-none disabled:opacity-40"
