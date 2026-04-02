@@ -104,11 +104,14 @@ export async function fetchManagers() {
 // Fetch addresses for a manager
 export async function fetchAddresses(managerId) {
     if (!supabase) return []
-    const { data, error } = await supabase
-        .from('addresses')
-        .select('*')
-        .eq('manager_id', managerId)
-        .order('created_at')
+
+    let query = supabase.from('addresses').select('*').order('created_at')
+
+    if (managerId !== 'ALL') {
+        query = query.eq('manager_id', managerId)
+    }
+
+    const { data, error } = await query
     if (error) {
         console.error('fetchAddresses error:', error)
         return []

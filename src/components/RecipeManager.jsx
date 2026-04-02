@@ -8,7 +8,8 @@ import {
     deleteRecipeRow,
     upsertIngredientCost,
     upsertProductPrice,
-    insertProduct
+    insertProduct,
+    deleteProduct
 } from '../services/orderService'
 import { useAuth } from '../contexts/AuthContext'
 import { useAddress } from '../contexts/AddressContext'
@@ -167,6 +168,20 @@ export default function RecipeManager({ products, recipes: initialRecipes, onBac
             setNewProductPrice('')
         } catch (error) {
             console.error('Create product error:', error)
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    async function handleDeleteProduct(productId, productName) {
+        if (!window.confirm(`Xóa món "${productName}" khỏi menu?`)) return
+        setSaving(true)
+        try {
+            await deleteProduct(productId)
+            onDataChanged?.()
+        } catch (err) {
+            console.error('Delete product error:', err)
+            alert('Không thể xóa món này. Có thể do món này đã có lịch sử giao dịch bán hàng (order_items liên kết).')
         } finally {
             setSaving(false)
         }
@@ -429,6 +444,19 @@ export default function RecipeManager({ products, recipes: initialRecipes, onBac
                                                     + Thêm nguyên liệu
                                                 </button>
                                             )}
+
+                                            <div className="flex justify-end pt-2 mt-3 border-t border-border/30 w-full relative z-10">
+                                                <span
+                                                    className="text-text-secondary text-[12px] text-end font-bold cursor-pointer underline decoration-dashed decoration-text-secondary/50 underline-offset-4 hover:text-danger hover:decoration-danger active:text-danger/80 transition-all select-none"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleDeleteProduct(product.id, product.name)
+                                                    }}
+                                                    title="Nhấn để xóa món này"
+                                                >
+                                                    {saving ? '⏳' : 'Xóa món'}
+                                                </span>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

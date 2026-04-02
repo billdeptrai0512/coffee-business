@@ -103,14 +103,21 @@ const DEMO_INVENTORY = {
 // Fetch all products for the menu
 export async function fetchProducts(addressId) {
     if (!supabase) return DEMO_PRODUCTS
-    const { data: prods, error } = await supabase
+    let { data: prods, error } = await supabase
         .from('products')
         .select('*')
+        .eq('is_active', true)
         .order('name')
 
     if (error) {
-        console.error('fetchProducts error:', error)
-        return DEMO_PRODUCTS
+        // Fallback if is_active column doesn't exist yet (42703 = undefined column)
+        if (error.code === '42703') {
+            const { data: fallbackProds } = await supabase.from('products').select('*').order('name')
+            prods = fallbackProds
+        } else {
+            console.error('fetchProducts error:', error)
+            return DEMO_PRODUCTS
+        }
     }
 
     const products = prods.length > 0 ? prods : DEMO_PRODUCTS
@@ -436,6 +443,35 @@ export async function insertProduct(name, price) {
         .single()
     if (error) throw error
     return data
+}
+
+// Delete a product (soft delete)
+export async function deleteProduct(productId) {
+    if (!supabase) throw new Error('No Supabase connection')
+
+    // 1. Attempt soft delete first (preserves history and order items)
+    const { error: softError } = await supabase
+        .from('products')
+        .update({ is_active: false })
+        .eq('id', productId)
+
+    if (softError) {
+        if (softError.code === '42703') {
+            // Fallback: column doesn't exist yet. Attempt hard delete.
+            const { error: priceError } = await supabase.from('product_prices').delete().eq('product_id', productId)
+            if (priceError) throw priceError
+
+            const { error: recipeError } = await supabase.from('recipes').delete().eq('product_id', productId)
+            if (recipeError) throw recipeError
+
+            const { error: hardError } = await supabase.from('products').delete().eq('id', productId)
+            if (hardError) throw hardError
+        } else {
+            throw softError
+        }
+    }
+
+    return true
 }
 
 // Submit a complete order to Supabase

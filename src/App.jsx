@@ -47,7 +47,7 @@ function RequireAddress() {
 
 // Manager-only route guard
 function ManagerOnly() {
-  const { isManager, loading } = useAuth()
+  const { isManager, isAdmin, loading } = useAuth()
 
   if (loading) {
     return (
@@ -57,7 +57,8 @@ function ManagerOnly() {
     )
   }
 
-  if (!isManager) return <Navigate to="/pos" replace />
+  if (!isManager && !isAdmin) return <Navigate to="/pos" replace />
+
   return <Outlet />
 }
 

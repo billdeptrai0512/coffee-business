@@ -9,7 +9,7 @@ export default function HistoryPage() {
     const navigate = useNavigate()
     const { products, recipes, ingredientCosts } = useProducts()
     const { todayOrders, isLoadingHistory, handleDeleteOrder } = usePOS()
-    const { isManager } = useAuth()
+    const { isManager, isAdmin } = useAuth()
 
     return (
         <HistoryView
@@ -20,7 +20,7 @@ export default function HistoryPage() {
             isLoadingHistory={isLoadingHistory}
             onBack={() => navigate('/pos')}
             onDeleteOrder={handleDeleteOrder}
-            onOpenRecipeManager={isManager ? () => navigate('/recipes') : null}
+            onOpenRecipeManager={(isManager || isAdmin) ? () => navigate('/recipes') : null}
         />
     )
 }

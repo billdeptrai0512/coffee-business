@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   auth_id UUID REFERENCES auth.users(id),
   name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('manager', 'staff')),
+  role TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('manager', 'staff', 'admin')),
   manager_id UUID REFERENCES users(id), -- staff belongs to a manager
   password TEXT NOT NULL DEFAULT ''
 );
@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS addresses (
 CREATE TABLE IF NOT EXISTS products (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
-  price INTEGER NOT NULL -- price in VND
+  price INTEGER NOT NULL, -- price in VND
+  is_active BOOLEAN DEFAULT true
 );
 
 -- Product prices (overrides per address)
@@ -78,7 +79,7 @@ CREATE TABLE IF NOT EXISTS order_items (
 -- Row Level Security Policies
 -- =============================================
 
--- Orders: managers can access orders for their addresses
+-- Orders: managers and admins can access orders
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "managers_full_access" ON orders;
 CREATE POLICY "managers_full_access" ON orders
@@ -90,6 +91,7 @@ CREATE POLICY "managers_full_access" ON orders
         SELECT manager_id FROM users WHERE auth_id = auth.uid() AND role = 'staff'
       )
     )
+    OR EXISTS (SELECT 1 FROM users WHERE auth_id = auth.uid() AND role = 'admin')
   );
 
 -- Order items: cascade through orders
@@ -106,6 +108,7 @@ CREATE POLICY "managers_order_items" ON order_items
           SELECT manager_id FROM users WHERE auth_id = auth.uid() AND role = 'staff'
         )
       )
+      OR EXISTS (SELECT 1 FROM users WHERE auth_id = auth.uid() AND role = 'admin')
     )
   );
 
@@ -137,7 +140,7 @@ DROP POLICY IF EXISTS "costs_write" ON ingredient_costs;
 CREATE POLICY "costs_read" ON ingredient_costs FOR SELECT USING (true);
 CREATE POLICY "costs_write" ON ingredient_costs FOR ALL USING (auth.uid() IS NOT NULL);
 
--- Addresses: users can access addresses belonging to their manager (if staff) or themselves (if manager)
+-- Addresses: users can access addresses belonging to their manager (if staff) or themselves (if manager) or all (admin)
 ALTER TABLE addresses ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "managers_own_addresses" ON addresses;
 CREATE POLICY "managers_own_addresses" ON addresses
@@ -146,8 +149,9 @@ CREATE POLICY "managers_own_addresses" ON addresses
       SELECT u.id FROM users u WHERE u.auth_id = auth.uid() AND u.role = 'manager'
     )
     OR manager_id IN (
-      SELECT u.manager_id FROM users u WHERE u.auth_id = auth.uid() AND u.role = 'staff'
+      SELECT u.manager_id FROM users u WHERE u.auth_id = auth.uid() AND role = 'staff'
     )
+    OR EXISTS (SELECT 1 FROM users WHERE auth_id = auth.uid() AND role = 'admin')
   );
 
 -- Users profiles: users can read all profiles (needed for signup manager selection) but only insert own

@@ -25,8 +25,16 @@ export function AddressProvider() {
             return
         }
 
-        const addressOwnerId = profile.role === 'manager' ? profile.id : profile.manager_id
-        if (!addressOwnerId) {
+        let addressOwnerId = null
+        if (profile.role === 'admin') {
+            addressOwnerId = 'ALL'
+        } else if (profile.role === 'manager') {
+            addressOwnerId = profile.id
+        } else {
+            addressOwnerId = profile.manager_id
+        }
+
+        if (!addressOwnerId && profile.role !== 'admin') {
             setLoading(false)
             return
         }
@@ -60,7 +68,7 @@ export function AddressProvider() {
     }, [])
 
     const createNewAddress = useCallback(async (name) => {
-        if (!profile?.id || profile.role !== 'manager') throw new Error('Chỉ quản lý mới có thể tạo địa chỉ')
+        if (!profile?.id || (profile.role !== 'manager' && profile.role !== 'admin')) throw new Error('Chỉ quản lý mới có thể tạo địa chỉ')
         const newAddr = await apiCreateAddress(profile.id, name)
         setAddresses(prev => [...prev, newAddr])
         return newAddr
