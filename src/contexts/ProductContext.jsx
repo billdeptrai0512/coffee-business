@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { fetchProducts, fetchAllRecipes, fetchIngredientCosts } from '../services/orderService'
 import { useAuth } from './AuthContext'
+import { useAddress } from './AddressContext'
 import { Outlet } from 'react-router-dom'
 
 const ProductContext = createContext(null)
@@ -19,15 +20,16 @@ export function ProductProvider() {
 
     const { profile } = useAuth()
     const activeManagerId = profile?.role === 'manager' ? profile.id : profile?.manager_id
+    const { selectedAddress } = useAddress()
 
     useEffect(() => {
         async function load() {
             try {
                 setLoading(true)
                 const [prods, recs, costs] = await Promise.all([
-                    fetchProducts(),
-                    fetchAllRecipes(activeManagerId),
-                    fetchIngredientCosts(activeManagerId)
+                    fetchProducts(selectedAddress?.id),
+                    fetchAllRecipes(selectedAddress?.id),
+                    fetchIngredientCosts(selectedAddress?.id)
                 ])
                 setProducts(prods)
                 setRecipes(recs)
@@ -39,16 +41,18 @@ export function ProductProvider() {
             }
         }
         load()
-    }, [activeManagerId])
+    }, [activeManagerId, selectedAddress?.id])
 
     const refreshProducts = useCallback(async () => {
-        const [recs, costs] = await Promise.all([
-            fetchAllRecipes(activeManagerId),
-            fetchIngredientCosts(activeManagerId)
+        const [prods, recs, costs] = await Promise.all([
+            fetchProducts(selectedAddress?.id),
+            fetchAllRecipes(selectedAddress?.id),
+            fetchIngredientCosts(selectedAddress?.id)
         ])
+        setProducts(prods)
         setRecipes(recs)
         setIngredientCosts(costs)
-    }, [activeManagerId])
+    }, [activeManagerId, selectedAddress?.id])
 
     return (
         <ProductContext.Provider value={{

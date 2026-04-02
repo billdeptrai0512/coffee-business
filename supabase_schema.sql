@@ -27,6 +27,14 @@ CREATE TABLE IF NOT EXISTS products (
   price INTEGER NOT NULL -- price in VND
 );
 
+-- Product prices (overrides per address)
+CREATE TABLE IF NOT EXISTS product_prices (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+  address_id UUID REFERENCES addresses(id) ON DELETE CASCADE,
+  price INTEGER NOT NULL -- price in VND
+);
+
 -- Recipes (ingredients per product)
 CREATE TABLE IF NOT EXISTS recipes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -107,6 +115,13 @@ DROP POLICY IF EXISTS "products_read" ON products;
 DROP POLICY IF EXISTS "products_write" ON products;
 CREATE POLICY "products_read" ON products FOR SELECT USING (true);
 CREATE POLICY "products_write" ON products FOR ALL USING (auth.uid() IS NOT NULL);
+
+-- Product prices: read for all, write for authenticated managers
+ALTER TABLE product_prices ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "prices_read" ON product_prices;
+DROP POLICY IF EXISTS "prices_write" ON product_prices;
+CREATE POLICY "prices_read" ON product_prices FOR SELECT USING (true);
+CREATE POLICY "prices_write" ON product_prices FOR ALL USING (auth.uid() IS NOT NULL);
 
 -- Recipes: read for all, write for authenticated managers
 ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
