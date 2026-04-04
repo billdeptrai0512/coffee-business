@@ -75,6 +75,15 @@ CREATE TABLE IF NOT EXISTS order_items (
   quantity INTEGER NOT NULL
 );
 
+-- Expenses (manual costs)
+CREATE TABLE IF NOT EXISTS expenses (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  address_id UUID REFERENCES addresses(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  amount INTEGER NOT NULL, -- cost in VND
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- =============================================
 -- Row Level Security Policies
 -- =============================================
@@ -139,6 +148,21 @@ DROP POLICY IF EXISTS "costs_read" ON ingredient_costs;
 DROP POLICY IF EXISTS "costs_write" ON ingredient_costs;
 CREATE POLICY "costs_read" ON ingredient_costs FOR SELECT USING (true);
 CREATE POLICY "costs_write" ON ingredient_costs FOR ALL USING (auth.uid() IS NOT NULL);
+
+-- Expenses: managers and admins can access expenses
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "managers_expenses" ON expenses;
+CREATE POLICY "managers_expenses" ON expenses
+  FOR ALL USING (
+    address_id IN (
+      SELECT a.id FROM addresses a
+      JOIN users u ON u.id = a.manager_id
+      WHERE u.auth_id = auth.uid() OR u.id IN (
+        SELECT manager_id FROM users WHERE auth_id = auth.uid() AND role = 'staff'
+      )
+    )
+    OR EXISTS (SELECT 1 FROM users WHERE auth_id = auth.uid() AND role = 'admin')
+  );
 
 -- Addresses: users can access addresses belonging to their manager (if staff) or themselves (if manager) or all (admin)
 ALTER TABLE addresses ENABLE ROW LEVEL SECURITY;

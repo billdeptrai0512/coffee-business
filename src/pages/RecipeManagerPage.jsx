@@ -11,7 +11,7 @@ export default function RecipeManagerPage() {
         <RecipeManager
             products={products}
             recipes={recipes}
-            onBack={() => navigate('/history')}
+            onBack={() => navigate('/daily-report')}
             onDataChanged={refreshProducts}
         />
     )

@@ -247,6 +247,57 @@ export async function fetchTodayOrders(addressId) {
     return data
 }
 
+// Fetch today's expenses, newest first (optionally scoped by address)
+export async function fetchTodayExpenses(addressId) {
+    if (!supabase) return []
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    let query = supabase
+        .from('expenses')
+        .select('*')
+        .gte('created_at', today.toISOString())
+
+    if (addressId) query = query.eq('address_id', addressId)
+
+    const { data, error } = await query.order('created_at', { ascending: false })
+
+    if (error) {
+        // Fallback if table doesn't exist yet (42P01)
+        if (error.code !== '42P01') {
+            console.error('fetchTodayExpenses error:', error)
+        }
+        return []
+    }
+    return data
+}
+
+// Insert an expense
+export async function insertExpense(name, amount, addressId = null) {
+    if (!supabase) throw new Error('No Supabase connection')
+    const payload = { name, amount }
+    if (addressId) payload.address_id = addressId
+
+    const { data, error } = await supabase
+        .from('expenses')
+        .insert(payload)
+        .select()
+        .single()
+    if (error) throw error
+    return data
+}
+
+// Delete an expense
+export async function deleteExpense(expenseId) {
+    if (!supabase) throw new Error('No Supabase connection')
+    const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expenseId)
+    if (error) throw error
+    return true
+}
+
 // Fetch current inventory (Disabled for now)
 export async function fetchInventory() {
     return { ...DEMO_INVENTORY }

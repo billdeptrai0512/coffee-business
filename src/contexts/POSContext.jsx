@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { fetchTodayRevenue, fetchTodayCupsSold, fetchInventory, submitOrder, fetchTodayOrders, deleteOrder } from '../services/orderService'
+import { fetchTodayRevenue, fetchTodayCupsSold, fetchInventory, submitOrder, fetchTodayOrders, deleteOrder, fetchTodayExpenses, insertExpense, deleteExpense } from '../services/orderService'
 import { useOfflineSync, addPendingOrder } from '../hooks/useOfflineSync'
 import { calculateProductCost } from '../utils'
 import { useProducts } from './ProductContext'
@@ -39,6 +39,7 @@ export function POSProvider() {
 
     // ---- History State ----
     const [todayOrders, setTodayOrders] = useState([])
+    const [todayExpenses, setTodayExpenses] = useState([])
     const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
     // ---- Toast helper ----
@@ -145,8 +146,25 @@ export function POSProvider() {
             })
             .subscribe()
 
+        const expensesChannel = supabase
+            .channel(`expenses-realtime-${addressId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, (payload) => {
+                if (payload.new?.address_id === addressId || payload.old?.address_id === addressId) {
+                    if (document.visibilityState === 'visible') {
+                        // Optimistically could refetch totalCost if we tracked it from DB, 
+                        // but totalCost is derived from orders + expenses. We'll simply let it update on load history.
+                        // Actually, to keep dashboard cost synced when other devices add expenses:
+                        fetchTodayExpenses(addressId).then(expenses => {
+                            setTodayExpenses(expenses)
+                        })
+                    }
+                }
+            })
+            .subscribe()
+
         return () => {
             supabase.removeChannel(ordersChannel)
+            supabase.removeChannel(expensesChannel)
         }
     }, [addressId])
 
@@ -246,8 +264,12 @@ export function POSProvider() {
         if (!addressId) return
         setIsLoadingHistory(true)
         try {
-            const orders = await fetchTodayOrders(addressId)
+            const [orders, expenses] = await Promise.all([
+                fetchTodayOrders(addressId),
+                fetchTodayExpenses(addressId)
+            ])
             setTodayOrders(orders)
+            setTodayExpenses(expenses)
         } catch (err) {
             console.error(err)
         } finally {
@@ -271,6 +293,33 @@ export function POSProvider() {
         }
     }
 
+    async function handleAddExpense(name, amount) {
+        if (!addressId) return
+        try {
+            const expense = await insertExpense(name, amount, addressId)
+            setTodayExpenses(prev => [expense, ...prev])
+            setTotalCost(prev => prev + amount)
+            showToast('Đã thêm chi phí', 'success')
+            return expense
+        } catch (err) {
+            console.error('Add expense error:', err)
+            showToast('Lỗi mạng khi thêm chi phí', 'danger')
+            throw err
+        }
+    }
+
+    async function handleDeleteExpense(expenseId, amount) {
+        try {
+            await deleteExpense(expenseId)
+            setTodayExpenses(prev => prev.filter(e => e.id !== expenseId))
+            setTotalCost(prev => Math.max(0, prev - amount))
+            showToast('Đã xóa chi phí', 'success')
+        } catch (err) {
+            console.error('Delete expense error:', err)
+            showToast('Lỗi khi xóa chi phí', 'warning')
+        }
+    }
+
     return (
         <POSContext.Provider value={{
             // Cart
@@ -280,7 +329,7 @@ export function POSProvider() {
             // Dashboard
             revenue, totalCost, cupsSold, inventory, isOnline,
             // History
-            todayOrders, isLoadingHistory, handleLoadHistory, handleDeleteOrder,
+            todayOrders, todayExpenses, isLoadingHistory, handleLoadHistory, handleDeleteOrder, handleAddExpense, handleDeleteExpense,
             // Toast
             toast, showToast,
         }}>

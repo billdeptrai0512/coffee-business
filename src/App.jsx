@@ -12,6 +12,7 @@ import AddressSelectPage from './pages/AddressSelectPage'
 import POSPage from './pages/POSPage'
 import HistoryPage from './pages/HistoryPage'
 import RecipeManagerPage from './pages/RecipeManagerPage'
+import DailyReportPage from './pages/DailyReportPage'
 
 // Protected route: redirects to /login if not authenticated
 function ProtectedRoute() {
@@ -76,6 +77,7 @@ export default function App() {
                 <Route element={<POSProvider />}>
                   <Route path="/pos" element={<POSPage />} />
                   <Route path="/history" element={<HistoryPage />} />
+                  <Route path="/daily-report" element={<DailyReportPage />} />
                   {/* Manager-only routes */}
                   <Route element={<ManagerOnly />}>
                     <Route path="/recipes" element={<RecipeManagerPage />} />
