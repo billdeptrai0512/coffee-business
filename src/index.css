@@ -138,6 +138,16 @@ body {
   animation: toast-in 200ms ease-out;
 }
 
+@keyframes shrink {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
+}
+
 /* ====== PWA Update Banner ====== */
 @keyframes slide-down {
   0% {

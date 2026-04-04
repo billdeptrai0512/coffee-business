@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { fetchTodayRevenue, fetchTodayCupsSold, fetchInventory, submitOrder, fetchTodayOrders, deleteOrder, fetchTodayExpenses, insertExpense, deleteExpense } from '../services/orderService'
+import { upsertSession } from '../services/authService'
 import { useOfflineSync, addPendingOrder } from '../hooks/useOfflineSync'
 import { calculateProductCost } from '../utils'
 import { useProducts } from './ProductContext'
@@ -19,6 +20,9 @@ export function POSProvider() {
     const { recipes, ingredientCosts } = useProducts()
     const { selectedAddress } = useAddress()
     const addressId = selectedAddress?.id
+
+    const localOrderIds = useRef(new Set())
+    const [realtimeNotification, setRealtimeNotification] = useState(null)
 
     // ---- Persisted State ----
     const loadLocalJSON = (key, fallback) => {
@@ -66,19 +70,15 @@ export function POSProvider() {
 
         async function load() {
             try {
-                const [rev, inv, cups, orders, expenses] = await Promise.all([
+                const [rev, inv, cups] = await Promise.all([
                     fetchTodayRevenue(addressId),
                     fetchInventory(),
-                    fetchTodayCupsSold(addressId),
-                    fetchTodayOrders(addressId),
-                    fetchTodayExpenses(addressId),
+                    fetchTodayCupsSold(addressId)
                 ])
                 if (supabase) {
                     setRevenue(rev)
                     setInventory(inv)
                     setCupsSold(cups)
-                    setTodayOrders(orders)
-                    setTodayExpenses(expenses)
                 } else {
                     setInventory(prev => Object.keys(prev).length ? prev : inv)
                 }
@@ -142,10 +142,28 @@ export function POSProvider() {
         const ordersChannel = supabase
             .channel(`orders-realtime-${addressId}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
-                // Only react to orders for this address
                 if (payload.new?.address_id === addressId) {
                     fetchTodayRevenue(addressId).then(setRevenue)
                     fetchTodayCupsSold(addressId).then(setCupsSold)
+
+                    // Simple logic to detect if it's from another device: delay slightly
+                    setTimeout(async () => {
+                        if (localOrderIds.current.has(payload.new.id)) return;
+
+                        const { data: items } = await supabase.from('order_items').select('quantity, products(name)').eq('order_id', payload.new.id)
+                        let qty = 0;
+                        let desc = '';
+                        if (items) {
+                            qty = items.reduce((s, i) => s + i.quantity, 0);
+                            desc = items.map(i => `${i.quantity}x ${i.products?.name}`).join(', ');
+                        }
+
+                        setRealtimeNotification({
+                            title: `Nhóm chi nhánh: Đơn mới (${qty} ly)`,
+                            description: desc || 'Đồng nghiệp vừa lên đơn',
+                            total: payload.new.total
+                        });
+                    }, 500)
                 }
             })
             .subscribe()
@@ -170,6 +188,24 @@ export function POSProvider() {
             supabase.removeChannel(ordersChannel)
             supabase.removeChannel(expensesChannel)
         }
+    }, [addressId])
+
+    // ---- Heartbeat for active_sessions ----
+    useEffect(() => {
+        if (!addressId) return
+        // Get profile from auth context via import would create circular dep,
+        // so we read userId from localStorage or let AddressContext handle initial upsert
+        const interval = setInterval(() => {
+            // Re-upsert session to keep last_seen fresh
+            const savedId = localStorage.getItem('pos_selected_address')
+            if (savedId === addressId) {
+                // We need the userId — stored when AddressContext calls upsertSession
+                const userId = localStorage.getItem('pos_active_user_id')
+                if (userId) upsertSession(userId, addressId)
+            }
+        }, 5 * 60 * 1000) // every 5 minutes
+
+        return () => clearInterval(interval)
     }, [addressId])
 
     // ---- Autosave Daemon ----
@@ -233,35 +269,31 @@ export function POSProvider() {
             return sum + (costPerItem * item.quantity)
         }, 0)
 
-        try {
-            if (navigator.onLine && supabase) {
-                await submitOrder(cart, total, null, addressId)
-                const [rev, cups] = await Promise.all([fetchTodayRevenue(addressId), fetchTodayCupsSold(addressId)])
-                setRevenue(rev)
-                setTotalCost(prev => prev + cartCost)
-                setCupsSold(cups)
-                showToast('Tạo thành công', 'success')
-            } else {
-                addPendingOrder(cart, total)
-                setRevenue(prev => prev + total)
-                setTotalCost(prev => prev + cartCost)
-                setCupsSold(prev => prev + orderCount)
-                showToast(`Lưu offline (${getPendingCount()} đơn chờ)`, 'warning')
-            }
-            setCart([])
-            setActiveCartItemId(null)
-        } catch (err) {
-            console.error('Submit error:', err)
-            addPendingOrder(cart, total)
-            setRevenue(prev => prev + total)
-            setTotalCost(prev => prev + cartCost)
-            setCupsSold(prev => prev + orderCount)
-            showToast('Lỗi mạng – đã lưu offline', 'warning')
-            setCart([])
-            setActiveCartItemId(null)
-        } finally {
-            setIsSubmitting(false)
+        // Optimistic: update UI immediately
+        const savedCart = [...cart]
+        const savedTotal = total
+        const savedOrderCount = orderCount
+        setRevenue(prev => prev + savedTotal)
+        setTotalCost(prev => prev + cartCost)
+        setCupsSold(prev => prev + savedOrderCount)
+        setCart([])
+        setActiveCartItemId(null)
+        showToast('Tạo thành công', 'success')
+
+        // Submit in background
+        if (navigator.onLine && supabase) {
+            submitOrder(savedCart, savedTotal, null, addressId).then(res => {
+                localOrderIds.current.add(res.id)
+            }).catch(err => {
+                console.error('Submit error:', err)
+                addPendingOrder(savedCart, savedTotal)
+                showToast('Lỗi mạng – đã lưu offline', 'warning')
+            })
+        } else {
+            addPendingOrder(savedCart, savedTotal)
+            showToast(`Lưu offline (${getPendingCount()} đơn chờ)`, 'warning')
         }
+        setIsSubmitting(false)
     }
 
     async function handleLoadHistory() {
@@ -334,8 +366,8 @@ export function POSProvider() {
             revenue, totalCost, cupsSold, inventory, isOnline,
             // History
             todayOrders, todayExpenses, isLoadingHistory, handleLoadHistory, handleDeleteOrder, handleAddExpense, handleDeleteExpense,
-            // Toast
-            toast, showToast,
+            // Toast & Realtime
+            toast, showToast, realtimeNotification, setRealtimeNotification
         }}>
             <Outlet />
         </POSContext.Provider>

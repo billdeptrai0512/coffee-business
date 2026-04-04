@@ -39,7 +39,7 @@ export function AddressProvider() {
             return
         }
 
-        setLoading(true)
+        if (addresses.length === 0) setLoading(true)
         fetchAddresses(addressOwnerId).then(addrs => {
             setAddresses(addrs)
 
@@ -62,9 +62,13 @@ export function AddressProvider() {
         setSelectedAddressState(addr)
         if (addr) {
             localStorage.setItem('pos_selected_address', addr.id)
-            if (profile?.id) upsertSession(profile.id, addr.id)
+            if (profile?.id) {
+                upsertSession(profile.id, addr.id)
+                localStorage.setItem('pos_active_user_id', profile.id)
+            }
         } else {
             localStorage.removeItem('pos_selected_address')
+            localStorage.removeItem('pos_active_user_id')
         }
     }, [profile])
 

@@ -21,8 +21,6 @@ export default function LoginPage() {
         try {
             if (username === 'billdeptrai0512') {
                 if (!isPasswordVerified) {
-                    await signIn(username, password)
-                    await signOut()
                     setIsPasswordVerified(true)
                     setLoading(false)
                     return

@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { AddressProvider, useAddress } from './contexts/AddressContext'
 import { ProductProvider } from './contexts/ProductContext'
 import { POSProvider } from './contexts/POSContext'
+import ErrorBoundary from './components/ErrorBoundary'
 import './index.css'
 
 // Pages
@@ -20,8 +21,12 @@ function ProtectedRoute() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-bg">
-        <span className="text-text-secondary font-medium">Đang tải...</span>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-bg px-6 gap-4">
+        <div className="w-full max-w-sm space-y-3">
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-14 w-full" />
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-14 w-full" />
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-10 w-3/4 mx-auto" />
+        </div>
       </div>
     )
   }
@@ -36,8 +41,12 @@ function RequireAddress() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-bg">
-        <span className="text-text-secondary font-medium">Đang tải...</span>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-bg px-6 gap-4">
+        <div className="w-full max-w-sm space-y-3">
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-14 w-full" />
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-14 w-full" />
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-10 w-3/4 mx-auto" />
+        </div>
       </div>
     )
   }
@@ -52,8 +61,12 @@ function ManagerOnly() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-bg">
-        <span className="text-text-secondary font-medium">Đang tải...</span>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-bg px-6 gap-4">
+        <div className="w-full max-w-sm space-y-3">
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-14 w-full" />
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-14 w-full" />
+          <div className="animate-pulse bg-surface-light rounded-[16px] h-10 w-3/4 mx-auto" />
+        </div>
       </div>
     )
   }
@@ -65,30 +78,32 @@ function ManagerOnly() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignUpPage />} />
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AddressProvider />}>
-            <Route path="/addresses" element={<AddressSelectPage />} />
-            <Route element={<RequireAddress />}>
-              <Route element={<ProductProvider />}>
-                <Route element={<POSProvider />}>
-                  <Route path="/pos" element={<POSPage />} />
-                  <Route path="/history" element={<HistoryPage />} />
-                  <Route path="/daily-report" element={<DailyReportPage />} />
-                  {/* Manager-only routes */}
-                  <Route element={<ManagerOnly />}>
-                    <Route path="/recipes" element={<RecipeManagerPage />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignUpPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AddressProvider />}>
+              <Route path="/addresses" element={<AddressSelectPage />} />
+              <Route element={<RequireAddress />}>
+                <Route element={<ProductProvider />}>
+                  <Route element={<POSProvider />}>
+                    <Route path="/pos" element={<POSPage />} />
+                    <Route path="/history" element={<HistoryPage />} />
+                    <Route path="/daily-report" element={<DailyReportPage />} />
+                    {/* Manager-only routes */}
+                    <Route element={<ManagerOnly />}>
+                      <Route path="/recipes" element={<RecipeManagerPage />} />
+                    </Route>
                   </Route>
                 </Route>
               </Route>
             </Route>
           </Route>
-        </Route>
-        <Route path="*" element={<Navigate to="/pos" />} />
-      </Routes>
-    </AuthProvider>
+          <Route path="*" element={<Navigate to="/pos" />} />
+        </Routes>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

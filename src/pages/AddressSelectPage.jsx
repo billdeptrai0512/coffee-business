@@ -70,8 +70,13 @@ export default function AddressSelectPage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-bg">
-                <span className="text-text-secondary font-medium">Đang tải...</span>
+            <div className="flex flex-col items-center justify-center min-h-screen bg-bg px-4">
+                <div className="w-full max-w-sm space-y-3">
+                    <div className="animate-pulse bg-surface-light rounded-[16px] h-16 w-full" />
+                    <div className="animate-pulse bg-surface-light rounded-[16px] h-16 w-full" />
+                    <div className="animate-pulse bg-surface-light rounded-[16px] h-16 w-full" />
+                    <div className="animate-pulse bg-surface-light rounded-[16px] h-10 w-1/2 mx-auto mt-4" />
+                </div>
             </div>
         )
     }

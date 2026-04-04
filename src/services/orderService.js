@@ -1,108 +1,10 @@
 import { supabase } from '../lib/supabaseClient'
 import { INGREDIENT_COSTS as DEFAULT_COSTS } from '../constants'
 
-// Demo data used when Supabase is not connected
-const DEMO_PRODUCTS = [
-    { id: '11111111-1111-1111-1111-111111111101', name: 'Cà phê đen', price: 14000 },
-    { id: '11111111-1111-1111-1111-111111111102', name: 'Cà phê sữa', price: 16000 },
-    { id: '11111111-1111-1111-1111-111111111103', name: 'Bạc xỉu', price: 16000 },
-    { id: '11111111-1111-1111-1111-111111111104', name: 'Sữa tươi cà phê', price: 16000 },
-    { id: '11111111-1111-1111-1111-111111111105', name: 'Cà phê muối', price: 19000 },
-    { id: '11111111-1111-1111-1111-111111111106', name: 'Americano', price: 14000 },
-    { id: '11111111-1111-1111-1111-111111111107', name: 'Cacao sữa', price: 21000 },
-    { id: '11111111-1111-1111-1111-111111111108', name: 'Matcha Latte', price: 21000 },
-    { id: '11111111-1111-1111-1111-111111111109', name: 'Cacao cà phê', price: 24000 },
-    { id: '11111111-1111-1111-1111-111111111110', name: 'Matcha kem muối', price: 27000 },
-]
-
-export const DEMO_RECIPES = [
-    // 1. Cà phê đen (101)
-    { product_id: '11111111-1111-1111-1111-111111111101', ingredient: 'coffee_g', amount: 20 },
-    { product_id: '11111111-1111-1111-1111-111111111101', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111101', ingredient: 'lid', amount: 1 },
-
-    // 2. Cà phê sữa (102)
-    { product_id: '11111111-1111-1111-1111-111111111102', ingredient: 'coffee_g', amount: 20 },
-    { product_id: '11111111-1111-1111-1111-111111111102', ingredient: 'condensed_milk_ml', amount: 30 },
-    { product_id: '11111111-1111-1111-1111-111111111102', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111102', ingredient: 'lid', amount: 1 },
-
-    // 3. Bạc xỉu (103)
-    { product_id: '11111111-1111-1111-1111-111111111103', ingredient: 'coffee_g', amount: 10 },
-    { product_id: '11111111-1111-1111-1111-111111111103', ingredient: 'fresh_milk_ml', amount: 50 },
-    { product_id: '11111111-1111-1111-1111-111111111103', ingredient: 'condensed_milk_ml', amount: 20 },
-    { product_id: '11111111-1111-1111-1111-111111111103', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111103', ingredient: 'lid', amount: 1 },
-
-    // 4. Sữa tươi cà phê (104)
-    { product_id: '11111111-1111-1111-1111-111111111104', ingredient: 'coffee_g', amount: 15 },
-    { product_id: '11111111-1111-1111-1111-111111111104', ingredient: 'fresh_milk_ml', amount: 60 },
-    { product_id: '11111111-1111-1111-1111-111111111104', ingredient: 'sugar_g', amount: 10 },
-    { product_id: '11111111-1111-1111-1111-111111111104', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111104', ingredient: 'lid', amount: 1 },
-
-    // 5. Cà phê muối (105)
-    { product_id: '11111111-1111-1111-1111-111111111105', ingredient: 'coffee_g', amount: 20 },
-    { product_id: '11111111-1111-1111-1111-111111111105', ingredient: 'condensed_milk_ml', amount: 30 },
-    { product_id: '11111111-1111-1111-1111-111111111105', ingredient: 'salt_cream_ml', amount: 40 },
-    { product_id: '11111111-1111-1111-1111-111111111105', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111105', ingredient: 'lid', amount: 1 },
-
-    // 6. Americano (106)
-    { product_id: '11111111-1111-1111-1111-111111111106', ingredient: 'coffee_g', amount: 20 },
-    { product_id: '11111111-1111-1111-1111-111111111106', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111106', ingredient: 'lid', amount: 1 },
-
-    // 7. Cacao sữa (107)
-    { product_id: '11111111-1111-1111-1111-111111111107', ingredient: 'cacao_powder_g', amount: 20 },
-    { product_id: '11111111-1111-1111-1111-111111111107', ingredient: 'condensed_milk_ml', amount: 30 },
-    { product_id: '11111111-1111-1111-1111-111111111107', ingredient: 'fresh_milk_ml', amount: 40 },
-    { product_id: '11111111-1111-1111-1111-111111111107', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111107', ingredient: 'lid', amount: 1 },
-
-    // 8. Matcha Latte (108)
-    { product_id: '11111111-1111-1111-1111-111111111108', ingredient: 'matcha_powder_g', amount: 15 },
-    { product_id: '11111111-1111-1111-1111-111111111108', ingredient: 'condensed_milk_ml', amount: 20 },
-    { product_id: '11111111-1111-1111-1111-111111111108', ingredient: 'fresh_milk_ml', amount: 60 },
-    { product_id: '11111111-1111-1111-1111-111111111108', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111108', ingredient: 'lid', amount: 1 },
-
-    // 9. Cacao cà phê (109)
-    { product_id: '11111111-1111-1111-1111-111111111109', ingredient: 'coffee_g', amount: 15 },
-    { product_id: '11111111-1111-1111-1111-111111111109', ingredient: 'cacao_powder_g', amount: 15 },
-    { product_id: '11111111-1111-1111-1111-111111111109', ingredient: 'condensed_milk_ml', amount: 30 },
-    { product_id: '11111111-1111-1111-1111-111111111109', ingredient: 'fresh_milk_ml', amount: 40 },
-    { product_id: '11111111-1111-1111-1111-111111111109', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111109', ingredient: 'lid', amount: 1 },
-
-    // 10. Matcha kem muối (110)
-    { product_id: '11111111-1111-1111-1111-111111111110', ingredient: 'matcha_powder_g', amount: 15 },
-    { product_id: '11111111-1111-1111-1111-111111111110', ingredient: 'condensed_milk_ml', amount: 20 },
-    { product_id: '11111111-1111-1111-1111-111111111110', ingredient: 'fresh_milk_ml', amount: 60 },
-    { product_id: '11111111-1111-1111-1111-111111111110', ingredient: 'salt_cream_ml', amount: 40 },
-    { product_id: '11111111-1111-1111-1111-111111111110', ingredient: 'cup', amount: 1 },
-    { product_id: '11111111-1111-1111-1111-111111111110', ingredient: 'lid', amount: 1 },
-]
-
-const DEMO_INVENTORY = {
-    coffee_g: 2000,
-    condensed_milk_ml: 3000,
-    fresh_milk_ml: 5000,
-    salt_cream_ml: 1000,
-    sugar_g: 2000,
-    cacao_powder_g: 1000,
-    matcha_powder_g: 1000,
-    tea_bag: 100,
-    peach_syrup_ml: 2000,
-    lychee_syrup_ml: 2000,
-    orange: 50,
-    cup: 200,
-    lid: 200,
-}
 
 // Fetch all products for the menu
 export async function fetchProducts(addressId) {
-    if (!supabase) return DEMO_PRODUCTS
+    if (!supabase) return []
     let { data: prods, error } = await supabase
         .from('products')
         .select('*')
@@ -110,20 +12,18 @@ export async function fetchProducts(addressId) {
         .order('name')
 
     if (error) {
-        // Fallback if is_active column doesn't exist yet (42703 = undefined column)
         if (error.code === '42703') {
             const { data: fallbackProds } = await supabase.from('products').select('*').order('name')
             prods = fallbackProds
         } else {
             console.error('fetchProducts error:', error)
-            return DEMO_PRODUCTS
+            return []
         }
     }
 
-    const products = prods.length > 0 ? prods : DEMO_PRODUCTS
+    const products = prods || []
 
-    if (addressId) {
-        // Fetch explicit price overrides for this address
+    if (addressId && products.length > 0) {
         const { data: prices } = await supabase
             .from('product_prices')
             .select('product_id, price')
@@ -300,12 +200,12 @@ export async function deleteExpense(expenseId) {
 
 // Fetch current inventory (Disabled for now)
 export async function fetchInventory() {
-    return { ...DEMO_INVENTORY }
+    return {}
 }
 
-// Fetch all recipes from Supabase, fallback to demo
+// Fetch all recipes from Supabase
 export async function fetchAllRecipes(addressId) {
-    if (!supabase) return DEMO_RECIPES
+    if (!supabase) return []
     let query = supabase.from('recipes').select('product_id, ingredient, amount, address_id')
 
     if (addressId) {
@@ -317,41 +217,37 @@ export async function fetchAllRecipes(addressId) {
     const { data, error } = await query
     if (error) {
         console.error('fetchAllRecipes error:', error)
-        return DEMO_RECIPES
+        return []
     }
 
-    if (!data || data.length === 0) return DEMO_RECIPES
+    if (!data || data.length === 0) return []
 
-    // Group defaults by productId
     const defaultData = data.filter(d => d.address_id === null)
     const addressData = data.filter(d => d.address_id === addressId)
-
     const addressProductIds = new Set(addressData.map(d => d.product_id))
 
-    const finalRecipes = []
-    finalRecipes.push(...addressData)
-
+    const finalRecipes = [...addressData]
     for (const d of defaultData) {
         if (!addressProductIds.has(d.product_id)) {
             finalRecipes.push(d)
         }
     }
 
-    return finalRecipes.length > 0 ? finalRecipes : DEMO_RECIPES
+    return finalRecipes
 }
 
 // Fetch recipes for a list of product IDs
 export async function fetchRecipes(productIds) {
-    if (!supabase) return DEMO_RECIPES.filter(r => productIds.includes(r.product_id))
+    if (!supabase) return []
     const { data, error } = await supabase
         .from('recipes')
         .select('product_id, ingredient, amount')
         .in('product_id', productIds)
     if (error) {
         console.error('fetchRecipes error:', error)
-        return DEMO_RECIPES.filter(r => productIds.includes(r.product_id))
+        return []
     }
-    return data
+    return data || []
 }
 
 // Fetch ingredient costs from Supabase, fallback to constants

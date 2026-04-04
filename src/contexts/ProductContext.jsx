@@ -13,9 +13,17 @@ export function useProducts() {
 }
 
 export function ProductProvider() {
-    const [products, setProducts] = useState([])
-    const [recipes, setRecipes] = useState([])
-    const [ingredientCosts, setIngredientCosts] = useState({})
+    // Read from cache immediately for instant display
+    const readCache = (key, fallback) => {
+        try {
+            const cached = localStorage.getItem(key)
+            return cached ? JSON.parse(cached) : fallback
+        } catch { return fallback }
+    }
+
+    const [products, setProducts] = useState(() => readCache('cache_products', []))
+    const [recipes, setRecipes] = useState(() => readCache('cache_recipes', []))
+    const [ingredientCosts, setIngredientCosts] = useState(() => readCache('cache_costs', {}))
     const [loading, setLoading] = useState(true)
 
     const { profile } = useAuth()
@@ -25,7 +33,7 @@ export function ProductProvider() {
     useEffect(() => {
         async function load() {
             try {
-                setLoading(true)
+                if (products.length === 0) setLoading(true)
                 const [prods, recs, costs] = await Promise.all([
                     fetchProducts(selectedAddress?.id),
                     fetchAllRecipes(selectedAddress?.id),
@@ -34,6 +42,12 @@ export function ProductProvider() {
                 setProducts(prods)
                 setRecipes(recs)
                 setIngredientCosts(costs)
+                // Update cache
+                try {
+                    localStorage.setItem('cache_products', JSON.stringify(prods))
+                    localStorage.setItem('cache_recipes', JSON.stringify(recs))
+                    localStorage.setItem('cache_costs', JSON.stringify(costs))
+                } catch { /* ignore quota errors */ }
             } catch (error) {
                 console.error('Failed to load product data', error)
             } finally {
