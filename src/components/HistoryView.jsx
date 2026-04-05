@@ -234,8 +234,8 @@ export default function HistoryView({ todayOrders, todayExpenses, recipes, produ
             {/* Footer */}
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-bg via-bg via-60% to-transparent pointer-events-none">
                 <div className="flex gap-2 pointer-events-auto mt-6">
-                    <div className="flex-1 bg-surface-light border border-border/60 rounded-[16px] px-4 py-2 flex flex-col justify-center items-start shadow-sm">
-                        <span className="text-[12px] font-black text-text-secondary uppercase">Tổng doanh thu</span>
+                    <div className="flex-1 bg-success/10 border border-success/60 rounded-[16px] px-4 py-2 flex flex-col justify-center items-start shadow-sm">
+                        <span className="text-[12px] font-black text-success uppercase">Doanh thu</span>
                         <span className="text-[16px] font-bold text-success max-w-full overflow-hidden text-ellipsis leading-none mt-1 tabular-nums">
                             {formatVND(totalRevenue - totalExpense)}
                         </span>
@@ -247,7 +247,7 @@ export default function HistoryView({ todayOrders, todayExpenses, recipes, produ
                         title="Chốt ca"
                     >
                         {/* <ClipboardCheck size={20} strokeWidth={2.5} className="text-text-secondary group-hover:text-text transition-colors" /> */}
-                        <span className="text-[14px] font-black text-text-secondary uppercase whitespace-nowrap group-hover:text-text transition-colors">Báo cáo cuối ngày</span>
+                        <span className="text-[12px] font-black text-text-secondary uppercase whitespace-nowrap group-hover:text-text transition-colors">Thống kê</span>
                     </button>
                 </div>
             </div>

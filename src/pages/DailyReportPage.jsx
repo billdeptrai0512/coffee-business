@@ -128,17 +128,6 @@ export default function DailyReportPage() {
         return { ...item, tag, emoji }
     }).sort((a, b) => b.profit - a.profit)
 
-    // Filter display
-    let filterDisplayTitle = "Tổng cộng bán"
-    let cupIconColor = "text-text-secondary/20 group-hover:text-text-secondary/30"
-    if (selectedProductId !== 'all') {
-        const pDef = products.find(p => p.id === selectedProductId)
-        if (pDef) {
-            filterDisplayTitle = pDef.name
-            cupIconColor = "text-primary/20 group-hover:text-primary/30"
-        }
-    }
-
     return (
         <div className="flex flex-col h-[100dvh] max-w-lg mx-auto bg-bg relative">
             <ReportHeader onBack={() => navigate('/history')} />
@@ -162,8 +151,6 @@ export default function DailyReportPage() {
                     <div className="flex flex-col gap-4 animate-fade-in">
                         <CupsFilterCard
                             totalCups={totalCups}
-                            filterDisplayTitle={filterDisplayTitle}
-                            cupIconColor={cupIconColor}
                             selectedProductId={selectedProductId}
                             onFilterChange={setSelectedProductId}
                             products={products}

@@ -1,21 +1,19 @@
-import { Coffee, Filter } from 'lucide-react'
-
-export default function CupsFilterCard({ totalCups, filterDisplayTitle, cupIconColor, selectedProductId, onFilterChange, products, soldProducts }) {
+export default function CupsFilterCard({ totalCups, selectedProductId, onFilterChange, products, soldProducts }) {
     return (
         <div className="grid grid-cols-2 gap-3 mt-2">
             <div className="bg-surface rounded-[24px] p-4 shadow-sm border border-border/60 flex flex-col justify-center relative overflow-hidden group">
-                <div className={`absolute top-3 right-3 transition-colors ${cupIconColor}`}>
+                {/* <div className={`absolute top-3 right-3 transition-colors ${cupIconColor}`}>
                     <Coffee size={36} />
-                </div>
-                <h3 className="text-[12px] font-black text-text-secondary uppercase mb-1 truncate pr-8">{filterDisplayTitle}</h3>
+                </div> */}
+                <h3 className="text-[12px] font-black text-text-secondary uppercase mb-1">Tổng cộng bán</h3>
                 <div className="text-[18px] font-bold text-text-primary tabular-nums">
                     {totalCups} ly
                 </div>
             </div>
             <div className="bg-surface rounded-[24px] p-3 shadow-sm border border-border/60 flex flex-col justify-center relative overflow-hidden group">
-                <div className="flex items-center gap-1.5 mb-2">
-                    <Filter size={14} className="text-text-secondary" />
-                    <h3 className="text-[12px] font-black text-text-secondary uppercase">Lọc theo món</h3>
+                <div className="flex items-center justify-between mb-2 ml-1 mr-1">
+                    <h3 className="text-[12px] font-black text-text-secondary uppercase">Trong đó</h3>
+                    {/* <Filter size={14} className="text-text-secondary" /> */}
                 </div>
                 <div className="relative">
                     <select
@@ -23,7 +21,7 @@ export default function CupsFilterCard({ totalCups, filterDisplayTitle, cupIconC
                         onChange={(e) => onFilterChange(e.target.value)}
                         className="w-full bg-surface-light text-text border border-border/40 rounded-xl px-2 py-2 text-[13px] font-medium appearance-none focus:outline-none focus:border-primary/50 transition-colors"
                     >
-                        <option value="all">Tất cả món</option>
+                        <option value="all">Tất cả</option>
                         {products.filter(p => soldProducts.has(p.id)).sort((a, b) => a.name.localeCompare(b.name)).map(p => (
                             <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
