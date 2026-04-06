@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Heart, Coffee } from 'lucide-react'
 import { usePOS } from '../contexts/POSContext'
 import { useProducts } from '../contexts/ProductContext'
 import { useNavigate } from 'react-router-dom'
@@ -183,6 +184,22 @@ export default function DailyReportPage() {
                         <RevenueChart lineChartData={lineChartData} />
                         <HeatmapChart hourRange={hourRange} soldProducts={soldProducts} products={products} heatmapData={heatmapData} maxHeatmapQty={maxHeatmapQty} />
                         <MenuEngineering classifiedItems={classifiedItems} />
+
+                        {/* Enhanced Footer */}
+                        <div className="flex flex-col items-center justify-center py-8 mt-4 gap-3 relative">
+                            <a
+                                href="https://github.com/billdeptrai0512"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-surface-light border border-border/50 text-text-secondary hover:text-primary hover:border-primary/30 hover:bg-primary/5 hover:shadow-[0_0_15px_var(--color-primary-glow)] transition-all duration-300 group z-10"
+                            >
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap mt-[1px]">
+                                    Developed by billdeptrai0512
+                                </span>
+                            </a>
+
+
+                        </div>
                     </div>
                 )}
             </main>

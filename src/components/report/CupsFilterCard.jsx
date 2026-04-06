@@ -5,7 +5,7 @@ export default function CupsFilterCard({ totalCups, selectedProductId, onFilterC
                 {/* <div className={`absolute top-3 right-3 transition-colors ${cupIconColor}`}>
                     <Coffee size={36} />
                 </div> */}
-                <h3 className="text-[12px] font-black text-text-secondary uppercase mb-1">Tổng cộng bán</h3>
+                <h3 className="text-[12px] font-black text-text-secondary uppercase mb-1">Tổng cộng</h3>
                 <div className="text-[18px] font-bold text-text-primary tabular-nums">
                     {totalCups} ly
                 </div>

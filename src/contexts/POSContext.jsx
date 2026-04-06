@@ -155,12 +155,12 @@ export function POSProvider() {
                         let desc = '';
                         if (items) {
                             qty = items.reduce((s, i) => s + i.quantity, 0);
-                            desc = items.map(i => `${i.quantity}x ${i.products?.name}`).join(', ');
+                            desc = items.map(i => `${i.quantity} ly ${i.products?.name}`).join(' + ');
                         }
 
                         setRealtimeNotification({
-                            title: `Nhóm chi nhánh: Đơn mới (${qty} ly)`,
-                            description: desc || 'Đồng nghiệp vừa lên đơn',
+                            title: `${selectedAddress?.name}`,
+                            description: `Khách vừa mua (${qty} ly)`,
                             total: payload.new.total
                         });
                     }, 500)
