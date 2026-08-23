@@ -229,7 +229,7 @@ export function splitCogsByCategory(orders, recipes, extraIngredients, ingredien
  * Per-day audit of `actual - (opening + restock - used)` summed across shift
  * closings; returns Σ|diff × unit_cost| where diff < 0 (hao hụt money lost).
  *
- * Mirrors the formula used inline in InventoryRefillCard + RangeLossCard so a
+ * Mirrors the formula used inline in InventoryReportCard + RangeLossCard so a
  * single source of truth feeds the FinanceCards "Hao hụt / hủy" line.
  *
  * Opening rules (matches the cards):

@@ -281,7 +281,7 @@ describe('calculateEstimatedConsumption', () => {
     // ── BUG DOCUMENTATION ─────────────────────────────────
     // Đây là test ghi lại đúng cách convert dữ liệu từ DB trước khi gọi
     // calculateEstimatedConsumption. DB lưu extra_ids: ['ly_lon'] (mảng string),
-    // KHÔNG phải extras: [{id:'ly_lon'}]. InventoryRefillCard phải tự map:
+    // KHÔNG phải extras: [{id:'ly_lon'}]. PastInventoryEditor phải tự map:
     //   extras: (i.extra_ids || []).map(id => ({ id }))
     // Nếu truyền thẳng extra_ids vào extras → sẽ không match extra nào cả
     // vì extraIngredients['l'] (ký tự đầu tiên của string) không tồn tại.
@@ -298,7 +298,7 @@ describe('calculateEstimatedConsumption', () => {
         expect(fixedResult).toEqual({ CaPhe: 27, SuaDac: 30, LyLon: 1 }); // ĐÚNG
     });
 
-    it('[BUG FIX] InventoryRefillCard cần map extra_ids → [{id}] cho todayOrders', () => {
+    it('[BUG FIX] PastInventoryEditor cần map extra_ids → [{id}] cho dayOrders', () => {
         // Mô phỏng raw order item từ DB (Supabase trả về)
         const rawOrderItem = {
             product_id: 'cafe_sua',
@@ -307,7 +307,7 @@ describe('calculateEstimatedConsumption', () => {
             // KHÔNG có trường "extras"
         };
 
-        // Cách ĐÚNG (giống past7DaysItems ở line 53-57 của InventoryRefillCard):
+        // Cách ĐÚNG (giống orderItems trong PastInventoryEditor):
         const normalizedItem = {
             productId: rawOrderItem.product_id,
             qty: rawOrderItem.quantity,

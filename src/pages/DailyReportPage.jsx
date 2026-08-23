@@ -27,7 +27,6 @@ import CashFlowCard from '../components/DailyReportPage/CashFlowCard'
 import ExpenseEditorModal from '../components/DailyReportPage/ExpenseEditorModal'
 import FinanceCards from '../components/DailyReportPage/FinanceCards'
 import { fetchExpenseCategories } from '../services/expenseService'
-import InventoryRefillCard from '../components/DailyReportPage/InventoryRefillCard'
 import PastInventoryEditor from '../components/DailyReportPage/PastInventoryEditor'
 import InventoryReportCard from '../components/DailyReportPage/InventoryReportCard'
 import MissingCupSuspicionCard from '../components/DailyReportPage/MissingCupSuspicionCard'
@@ -1400,7 +1399,7 @@ export default function DailyReportPage() {
                                 )}
 
                                 {/* Today: editable inventory report — hao hụt + refill ("Bổ sung mai") merged per row. */}
-                                {/* Past date: read-only audit + refill view via InventoryRefillCard. */}
+                                {/* Past date: cùng editor, read-only khi không có quyền/không có phiếu. */}
                                 {isTodayScope ? (
                                     <div className="flex flex-col gap-3">
                                         {/* Pill chỉ hiện "Đang lưu" (spinner) trong lúc GHI (isSavingShift) — tắt
@@ -1476,40 +1475,24 @@ export default function DailyReportPage() {
                                         )}
                                     </div>
                                 ) : scope === 'day' ? (
-                                    // Ngày cũ: chủ/quản lý dùng CHÍNH editor như hôm nay (sửa Cuối kỳ để fix
-                                    // kết ca sai); staff — hoặc ngày KHÔNG có phiếu chốt (không có id để
-                                    // UPDATE) — chỉ xem audit read-only (InventoryRefillCard null nếu rỗng).
-                                    !isStaff && shiftClosing?.id ? (
-                                        <PastInventoryEditor
-                                            shiftClosing={shiftClosing}
-                                            yesterdayClosing={yesterdayClosing}
-                                            dayOrders={displayOrders}
-                                            recipes={recipes}
-                                            extraIngredients={extraIngredients}
-                                            products={products}
-                                            productExtras={productExtras}
-                                            ingredientUnits={ingredientUnits}
-                                            ingredientsList={inventory.ingredientsList}
-                                            isLoading={inventory.isLoadingIngredients}
-                                            isSaving={isSavingShift}
-                                            onSave={handleSavePastInventory}
-                                            onDirtyChange={handlePastInvDirty}
-                                        />
-                                    ) : (
-                                        <InventoryRefillCard
-                                            shiftClosing={shiftClosing}
-                                            yesterdayClosing={yesterdayClosing}
-                                            todayOrders={displayOrders}
-                                            offlineToday={[]}
-                                            recipes={recipes}
-                                            extraIngredients={extraIngredients}
-                                            selectedAddress={selectedAddress}
-                                            products={products}
-                                            productExtras={productExtras}
-                                            ingredientUnits={ingredientUnits}
-                                            isPastDate={true}
-                                        />
-                                    )
+                                    // Ngày cũ: CHÍNH editor của hôm nay. Chủ/quản lý + có phiếu chốt (có id
+                                    // để UPDATE) → truyền onSave, sửa được Cuối kỳ để fix kết ca sai. Staff
+                                    // hoặc ngày không có phiếu → onSave={null} = editor tự khoá read-only.
+                                    <PastInventoryEditor
+                                        shiftClosing={shiftClosing}
+                                        yesterdayClosing={yesterdayClosing}
+                                        dayOrders={displayOrders}
+                                        recipes={recipes}
+                                        extraIngredients={extraIngredients}
+                                        products={products}
+                                        productExtras={productExtras}
+                                        ingredientUnits={ingredientUnits}
+                                        ingredientsList={inventory.ingredientsList}
+                                        isLoading={inventory.isLoadingIngredients}
+                                        isSaving={isSavingShift}
+                                        onSave={!isStaff && shiftClosing?.id ? handleSavePastInventory : null}
+                                        onDirtyChange={handlePastInvDirty}
+                                    />
                                 ) : (
                                     // Range scopes (week/month/custom): aggregate loss across all
                                     // closings in the period — mirrors what /range-report shows.

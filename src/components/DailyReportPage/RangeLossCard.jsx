@@ -9,7 +9,7 @@ import { formatVND } from '../../utils';
 /**
  * RangeLossCard – Aggregated inventory loss for a week/month.
  *
- * Uses the exact same per-day formula as InventoryRefillCard's audit tab,
+ * Uses the exact same per-day formula as the daily audit (InventoryReportCard),
  * then sums across all days that have a shift_closing in the period.
  *
  * Per-day formula (identical to daily audit):

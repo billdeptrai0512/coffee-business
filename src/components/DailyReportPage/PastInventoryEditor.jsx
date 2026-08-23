@@ -13,7 +13,7 @@ const NOOP = () => {}
 // fix khi kết ca nhập sai làm hao hụt/lợi nhuận ngày đó sai, mà không đụng kho tổng hiện tại.
 //
 // ponytail: usedMap/breakdown/ingredientToProduct tính lại tại đây từ orders của ngày đó (các
-// memo trong DailyReportPage đều gate `!isTodayScope → []`). Cùng công thức với InventoryRefillCard;
+// memo trong DailyReportPage đều gate `!isTodayScope → []`). Cùng công thức với RangeLossCard;
 // nâng cấp: tách helper dùng chung nếu xuất hiện chỗ thứ 4.
 export default function PastInventoryEditor({
     shiftClosing,
@@ -27,9 +27,12 @@ export default function PastInventoryEditor({
     ingredientsList = [],
     isLoading = false,
     isSaving = false,
-    onSave,                  // async (newInventoryReport) => boolean (true = đã lưu)
+    onSave,                  // async (newInventoryReport) => boolean (true = đã lưu). null → read-only.
     onDirtyChange,           // (dirty, lines) => void — báo cha để guard rời trang khi sửa chưa lưu
 }) {
+    // Không có onSave (staff, hoặc ngày không có phiếu chốt để UPDATE) → khoá luôn ô Cuối kỳ.
+    // isSubmitting disable hết input ⇒ hasEdits không bao giờ true ⇒ nút Lưu không hiện.
+    const readOnly = typeof onSave !== 'function'
     const [open, setOpen] = useState(true)
 
     const orderItems = useMemo(() => {
@@ -148,6 +151,10 @@ export default function PastInventoryEditor({
         [],
     )
 
+    // Ngày cũ không có phiếu chốt: read-only mà không có gì để đọc → ẩn hẳn thay vì
+    // bày bảng trống toàn NVL (ingredientsList là danh sách của hôm nay).
+    if (readOnly && !shiftClosing?.inventory_report?.length) return null
+
     return (
         <div className="flex flex-col gap-3">
             <InventoryReportCard
@@ -163,7 +170,7 @@ export default function PastInventoryEditor({
                 usedMap={usedMap}
                 consumptionBreakdown={consumptionBreakdown}
                 ingredientToProduct={ingredientToProduct}
-                isSubmitting={isSaving}
+                isSubmitting={isSaving || readOnly}
                 lockWarehouseInputs={true}
                 baselineInputs={baselineInputs}
                 baselineVersion={version}
