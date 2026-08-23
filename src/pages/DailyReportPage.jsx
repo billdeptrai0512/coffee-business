@@ -463,7 +463,7 @@ export default function DailyReportPage() {
 
     // All heavy stats: only reruns when orders/recipes/products change, NOT on UI state changes
     const { totalRevenue, totalDiscount, totalCOGS, productStats, soldProducts, lineChartData, offlineToday } = useMemo(() => {
-        const pending = scope !== 'day' || offset !== 0 ? [] : getPendingOrders()
+        const pending = isTodayScope ? getPendingOrders() : []
         const offlineToday = pending.filter(o => isSameDayVN(new Date(o.createdAt), new Date()))
 
         const agg = aggregateOrderStats({
@@ -483,26 +483,16 @@ export default function DailyReportPage() {
             lineChartData: buildHourlyLineChart(agg),
             offlineToday,
         }
-    }, [displayOrders, productMap, extraMaps, recipes, extraIngredients, ingredientCosts, scope, offset])
+    }, [displayOrders, productMap, extraMaps, recipes, extraIngredients, ingredientCosts, isTodayScope])
 
-    // totalCups separated: only reruns when orders change, not on other UI state.
-    // Products with count_as_cup=false are excluded.
-    const totalCups = useMemo(() => {
-        let cups = 0
-        const isExcluded = (pid) => productMap.get(pid)?.count_as_cup === false
-        displayOrders.filter(o => !o.deleted_at).forEach(o => {
-            ; (o.order_items || []).forEach(i => {
-                const pid = i.product_id || i.productId
-                if (!isExcluded(pid)) cups += i.quantity || i.qty || 1
-            })
-        })
-        offlineToday.forEach(o => {
-            ; (o.cart || o.orderItems || []).forEach(i => {
-                if (!isExcluded(i.productId)) cups += i.quantity || 1
-            })
-        })
-        return cups
-    }, [displayOrders, offlineToday, productMap])
+    // aggregateOrderStats ở trên đã đếm qty từng món trên ĐÚNG tập order này — cộng
+    // lại từ productStats thay vì quét orders × items lần thứ hai (2 vòng lặp chuẩn hoá
+    // field khác nhau là chỗ dễ lệch). Món count_as_cup=false không tính là ly.
+    const totalCups = useMemo(
+        () => Object.entries(productStats).reduce(
+            (n, [pid, st]) => productMap.get(pid)?.count_as_cup === false ? n : n + st.qty, 0),
+        [productStats, productMap],
+    )
 
     const { dailyExpense, refillFreeForm } = useMemo(
         () => splitExpenses(displayExpenses),
@@ -1287,28 +1277,27 @@ export default function DailyReportPage() {
                                 hintTransfer={hintTransfer}
                                 onEditExpense={setEditingExpense}
                                 onEditRestockPayment={handleEditRestockPayment}
-                                salesCard={
-                                    <div className="flex flex-col gap-4">
-                                        <SalesCard
-                                            totalCups={totalCups}
+                            >
+                                <div className="flex flex-col gap-4">
+                                    <SalesCard
+                                        totalCups={totalCups}
+                                        products={products}
+                                        soldProducts={soldProducts}
+                                        totalRevenue={totalRevenue}
+                                        productStats={productStats}
+                                        lineChartData={lineChartData}
+                                        showChart={!isRangeScope}
+                                    />
+                                    {isRangeScope && (
+                                        <DayPerformanceChart
+                                            orders={displayOrders}
+                                            range={scope}
+                                            start={rangeStart}
                                             products={products}
-                                            soldProducts={soldProducts}
-                                            totalRevenue={totalRevenue}
-                                            productStats={productStats}
-                                            lineChartData={lineChartData}
-                                            showChart={!isRangeScope}
                                         />
-                                        {isRangeScope && (
-                                            <DayPerformanceChart
-                                                orders={displayOrders}
-                                                range={scope}
-                                                start={rangeStart}
-                                                products={products}
-                                            />
-                                        )}
-                                    </div>
-                                }
-                            />
+                                    )}
+                                </div>
+                            </CashFlowCard>
                         )}
 
                         {(view === VIEW_ALL || view === VIEW_INVENTORY) && (

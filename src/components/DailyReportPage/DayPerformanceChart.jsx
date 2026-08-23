@@ -11,32 +11,22 @@ function countableQty(items, countMap) {
     }, 0)
 }
 
-function buildWeekData(orders, start, countMap) {
-    const slots = Array.from({ length: 7 }, (_, i) => {
+// 7 cột T2..CN, mọi order gộp theo THỨ trong tuần.
+//   `start` có → tuần cụ thể: gắn thêm `date` cho từng cột để làm mờ ngày chưa tới.
+//   `start` null (tháng/custom) → mỗi cột là tổng của thứ đó trên cả kỳ, không có
+//   ngày cụ thể nên không cột nào bị làm mờ.
+function buildDayData(orders, countMap, start) {
+    const slots = DAY_LABELS.map((label, i) => {
+        if (!start) return { label, cups: 0, revenue: 0 }
         const d = new Date(start)
         d.setDate(start.getDate() + i)
-        return { label: DAY_LABELS[i], date: new Date(d), cups: 0, revenue: 0 }
+        return { label, date: d, cups: 0, revenue: 0 }
     })
-    orders.forEach(o => {
-        const d = new Date(o.created_at)
-        const diff = (d.getDay() + 6) % 7 // 0=Mon, 1=Tue... 6=Sun
-        if (diff >= 0 && diff < 7) {
-            slots[diff].cups += countableQty(o.order_items, countMap)
-            slots[diff].revenue += o.total
-        }
-    })
-    return slots
-}
-
-// Month / custom: aggregate every order by day-of-week → 7 columns T2..CN, so each
-// column is the total of all that weekday across the range (not one bar per week).
-function buildWeekdayData(orders, countMap) {
-    const slots = DAY_LABELS.map(label => ({ label, cups: 0, revenue: 0 }))
-    orders.forEach(o => {
+    for (const o of orders) {
         const idx = (new Date(o.created_at).getDay() + 6) % 7 // 0=Mon … 6=Sun
         slots[idx].cups += countableQty(o.order_items, countMap)
         slots[idx].revenue += o.total
-    })
+    }
     return slots
 }
 
@@ -64,14 +54,10 @@ function DayPerformanceChart({ orders, range, start, products }) {
         [products]
     )
 
-    const data = useMemo(() => {
-        if (!start) return []
-        // Week: 7 cột T2..CN của đúng tuần đó (theo ngày lịch).
-        if (range === 'week') return buildWeekData(orders, start, countMap)
-        // Month + custom + mọi range nhiều ngày: gộp theo THỨ trong tuần (T2..CN),
-        // luôn xếp theo thứ tự ngày trong tuần dù range dài bao nhiêu.
-        return buildWeekdayData(orders, countMap)
-    }, [orders, range, start, countMap])
+    const data = useMemo(
+        () => (start ? buildDayData(orders, countMap, range === 'week' ? start : null) : []),
+        [orders, range, start, countMap],
+    )
 
     const maxCups = useMemo(() => Math.max(...data.map(d => d.cups), 1), [data])
 

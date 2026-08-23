@@ -51,8 +51,7 @@ export function readParamsSeed(sp) {
 //   'custom' → an explicit { startISO, endISO } range in `customRange`
 //
 // `initial` seeds from nav state (location.state) so a window survives the
-// Nhật ký ↔ Báo cáo tab switch. `hasManualPick` flags a calendar pick (vs chevron
-// stepping) for callers that care.
+// Nhật ký ↔ Báo cáo tab switch.
 export function useDateScope(initial) {
     const [searchParams, setSearchParams] = useSearchParams()
 
@@ -67,7 +66,6 @@ export function useDateScope(initial) {
     const [scope, setScope] = useState(initialScope)
     const [offset, setOffset] = useState(initialOffset)
     const [customRange, setCustomRange] = useState(initialCustomRange)
-    const [hasManualPick, setHasManualPick] = useState(false)
 
     // Mirror the live selection into the URL (replace, so it doesn't spam history).
     // Default day/offset-0 is the clean "no params" state. Other state survives a
@@ -101,13 +99,11 @@ export function useDateScope(initial) {
 
     // ── helpers ──────────────────────────────────────────────────────────────
     const setOffsetFromISO = useCallback((iso) => {
-        if (!iso || iso >= todayISO) { setOffset(0); setHasManualPick(false); return }
-        setOffset(offsetFromISO(iso, todayISO))
+        setOffset(!iso || iso >= todayISO ? 0 : offsetFromISO(iso, todayISO))
     }, [todayISO])
 
     // Step the single-day selection by ±1 day. Clamps forward at today.
     const stepDay = useCallback((dir) => {
-        setHasManualPick(false)
         const base = new Date(`${dayInputValue}T00:00:00+07:00`)
         const next = dateStringVN(new Date(base.getTime() + dir * MS_DAY))
         if (next >= todayISO) { setOffset(0); return }
@@ -132,11 +128,9 @@ export function useDateScope(initial) {
         if (safeStart === safeEnd) {
             setCustomRange(null)
             setScope('day')
-            setHasManualPick(true)
             setOffsetFromISO(safeStart)
         } else {
             setCustomRange({ startISO: safeStart, endISO: safeEnd })
-            setHasManualPick(false)
             setScope('custom')
         }
     }, [todayISO, setOffsetFromISO])
@@ -165,7 +159,6 @@ export function useDateScope(initial) {
         if (!iso) return
         setScope('day')
         setCustomRange(null)
-        setHasManualPick(true)
         setOffsetFromISO(iso)
     }, [setOffsetFromISO])
 
@@ -180,7 +173,6 @@ export function useDateScope(initial) {
             setOffset(0)
             setCustomRange(null)
         }
-        setHasManualPick(false)
     }, [])
 
     // The serialisable selection — pass into nav state so the other page rehydrates.
@@ -191,15 +183,13 @@ export function useDateScope(initial) {
 
     return {
         // state
-        scope, offset, customRange, hasManualPick,
-        // raw setters (still available for edge cases / callers that need them)
-        setScope, setOffset, setCustomRange, setHasManualPick,
+        scope, offset, customRange,
         // derived
-        todayISO, dayCustomDate, dayInputValue,
+        todayISO, dayInputValue,
         canGoForwardDay, canGoForwardPeriod, canShiftRangeForward,
         navState,
         // transitions
         goPrevDay, goNextDay, goOffsetPrev, goOffsetNext,
-        applyRange, shiftRange, goToDate, applyPreset, setOffsetFromISO,
+        applyRange, shiftRange, goToDate, applyPreset,
     }
 }

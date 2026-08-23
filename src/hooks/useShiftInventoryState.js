@@ -75,7 +75,6 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
     // ── Derived / fetched ─────────────────────────────────────────────────────
     const { ingredientsList, isLoadingIngredients, reloadIngredients } = useIngredientCatalog(addressId, ingredientSortOrder)
     const [existingClosing, setExistingClosing] = useState(null)
-    const [isLoadingExisting, setIsLoadingExisting] = useState(true)
 
     // Dirty is DERIVED from a baseline snapshot (last loaded / last saved values).
     // The old boolean flag stuck at true after a revert because nothing knew
@@ -111,7 +110,7 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
     useEffect(() => {
         // addressId === null (not undefined) means "Mẫu mặc định" (admin default
         // template) — a valid target, not "no address selected yet".
-        if (addressId === undefined) { setIsLoadingExisting(false); return }
+        if (addressId === undefined) return
         // Clear pre-existing input state so a new day starts blank if no closing exists yet.
         setExistingClosing(null)
         setInventoryInputs({})
@@ -159,11 +158,9 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
             commitBaseline(openBase, locked, restocks, inputs, skips)
         }
 
-        setIsLoadingExisting(true)
         if (seedReady) {
             // Cha đã fetch xong (get_daily_report_context / get_report_by_date) — dùng thẳng.
             applyTodayClosing(seedTodayClosing)
-            setIsLoadingExisting(false)
             return
         }
         if (isDayScope) {
@@ -171,7 +168,7 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
             // không tự bắn fetch trùng với fetch cha đang chạy.
             return
         }
-        fetchTodayShiftClosing(addressId).then(applyTodayClosing).finally(() => setIsLoadingExisting(false))
+        fetchTodayShiftClosing(addressId).then(applyTodayClosing)
     }, [addressId, dateKey, commitBaseline, seedReady, seedTodayClosing, isDayScope])
 
     // ── Canonical stock reader: warehouse + counter snapshots ────────────────
@@ -282,10 +279,6 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
     // ── Mutation handlers (plain setState; dirty is derived, autosave pushes) ─
     const onOpeningChange = useCallback((ingredient, value) => {
         setOpeningInputs(prev => ({ ...prev, [ingredient]: value }))
-    }, [])
-
-    const onOpeningLock = useCallback((ingredient, locked) => {
-        setOpeningLocked(prev => ({ ...prev, [ingredient]: locked }))
     }, [])
 
     const onRestockChange = useCallback((ingredient, value) => {
@@ -502,7 +495,6 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
         ingredientsList, isLoadingIngredients,
         openingStock, warehouseStocks, effectiveWarehouseStocks, reloadStocks, reloadIngredients,
         existingClosing, setExistingClosing,
-        isLoadingExisting,
         restockOverflowIngredients,
         // dirty tracking (derived from baseline comparison; baseline advances on push/remote merge)
         isDirty, restockDirty, dirtySummary,
@@ -510,7 +502,7 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
         // sort and to remount rows so they auto-collapse after a successful save.
         baselineSnapshot, baselineVersion,
         // handlers
-        onOpeningChange, onOpeningLock, onRestockChange, onInventoryChange, onSkipToggle,
+        onOpeningChange, onRestockChange, onInventoryChange, onSkipToggle,
         // save helpers
         pushInventory,
     }

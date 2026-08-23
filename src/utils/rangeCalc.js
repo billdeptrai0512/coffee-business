@@ -35,7 +35,8 @@ export function getDateRange(range, offset = 0) {
 }
 
 // Returns { start, end } for the given scope/offset/customRange.
-export function calcRange(scope, offset, customRange) {
+// Nội bộ file: chỉ calcRangeWithLabel/calcRangeWithPrev dưới đây gọi.
+function calcRange(scope, offset, customRange) {
     if (scope === 'day') {
         const target = new Date()
         target.setDate(target.getDate() + offset)

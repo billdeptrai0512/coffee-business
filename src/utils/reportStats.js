@@ -31,7 +31,7 @@ export function buildExtraMaps(productExtras) {
     return { priceMap, nameMap }
 }
 
-export function buildVariantLabel(extraNames) {
+function buildVariantLabel(extraNames) {
     if (!extraNames?.length) return 'Thường'
     return [...extraNames]
         .sort((a, b) => a.trim().toLowerCase().localeCompare(b.trim().toLowerCase(), 'vi'))

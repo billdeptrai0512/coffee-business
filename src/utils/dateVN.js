@@ -39,6 +39,14 @@ export function dateShortVN(date = new Date()) {
     return `${d}/${m}`
 }
 
+// "dd/mm" từ 1 timestamp bất kỳ, chuỗi rỗng nếu thiếu/hỏng — dùng cho dòng chi phí
+// trong báo cáo (scope nhiều ngày cần biết khoản đó rơi vào ngày nào).
+export function dayMonthVN(ts) {
+    if (!ts) return ''
+    const d = new Date(ts)
+    return isNaN(d) ? '' : dateShortVN(d)
+}
+
 // "dd/mm/yyyy" in Vietnam timezone.
 export function dateFullVN(date = new Date()) {
     const [y] = dateStringVN(date).split('-')

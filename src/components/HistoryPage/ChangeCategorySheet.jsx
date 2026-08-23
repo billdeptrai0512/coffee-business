@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, Plus, Check, Pencil, Trash2, ChevronDown } from 'lucide-react'
 import { EXPENSE_GROUPS, groupMeta } from '../../constants/expenseGroups'
 import { formatVND } from '../../utils/money'
+import { dayMonthVN } from '../../utils/dateVN'
 import { BottomSheet } from '../common/ModalShell'
 
 // Nhãn fallback (Vận hành · "Chi phí khác") là nơi dồn chi phí khi chi phí không
@@ -14,11 +15,6 @@ const KNOWN_GROUP_KEYS = new Set(EXPENSE_GROUPS.map(g => g.key))
 const labelsInGroup = (categories, key) => categories.filter(c =>
     c.group_section === key || (key === 'operating' && !KNOWN_GROUP_KEYS.has(c.group_section))
 )
-const dayMonth = (ts) => {
-    if (!ts) return ''
-    const d = new Date(ts)
-    return isNaN(d) ? '' : d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
-}
 
 // Màn QUẢN LÝ NHÃN (mở từ AddExpenseModal). Vai trò: CRUD nhãn theo nhóm + tái
 // phân loại chi phí khi xoá nhãn còn chi phí. Việc CHỌN nhãn cho chi phí dùng 2
@@ -454,7 +450,7 @@ function ReassignRow({ expense, targets, disabled, onMove }) {
         <div className="flex flex-col gap-2 p-3 bg-surface-light border border-border/60 rounded-[12px]">
             <div className="flex items-center justify-between gap-2">
                 <span className="text-[13px] font-bold text-text truncate min-w-0">
-                    {dayMonth(expense.created_at) && <span className="text-text-dim tabular-nums font-medium">{dayMonth(expense.created_at)} · </span>}
+                    {dayMonthVN(expense.created_at) && <span className="text-text-dim tabular-nums font-medium">{dayMonthVN(expense.created_at)} · </span>}
                     {expense.name || 'Chi phí'}
                 </span>
                 <span className="text-[13px] font-bold text-danger shrink-0">{formatVND(expense.amount || 0)}</span>

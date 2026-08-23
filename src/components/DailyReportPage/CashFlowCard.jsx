@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { formatVND, parseVNDInput } from '../../utils'
+import { formatVND, parseVNDInput, capFirst } from '../../utils'
+import { dayMonthVN } from '../../utils/dateVN'
 import { ingredientLabel, normalizeIngredientCategory, INGREDIENT_CATEGORIES } from '../../utils/ingredients'
 import { computeCashFlowTotals } from '../../utils/reportStats'
 import { useProducts } from '../../contexts/ProductContext'
 import { onboardingHintClass } from '../../utils/onboardingHint'
 
-// Viết hoa chữ cái đầu ('đ' → 'Đ' được toUpperCase xử lý đúng cho tiếng Việt).
-const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 // Phase 1 payment: cờ trên payment ưu tiên cờ hoá đơn gốc; chỉ 'in_shift' rõ ràng
 // mới là trong ca, còn lại (kể cả null/phiếu cũ) → sau chốt ca. Khớp reportStats.
 const paymentPhase = (p) => ((p.cash_phase || p.invoice_metadata?.cash_phase) === 'in_shift' ? 'in_shift' : 'post_close')
@@ -17,13 +16,6 @@ const groupPhase = (hasIn, hasPost) => (hasIn && hasPost ? 'mixed' : hasIn ? 'in
 const methodOf = (x) => (x?.payment_method === 'transfer' ? 'transfer' : 'cash')
 // Method của 1 NHÓM gộp: lẫn cả hai → 'mixed'.
 const groupMethod = (hasCash, hasTransfer) => (hasCash && hasTransfer ? 'mixed' : hasTransfer ? 'transfer' : 'cash')
-// "DD/MM" theo timestamp — dòng món trong panel Thực chi mở đầu bằng ngày.
-const dayMonth = (ts) => {
-    if (!ts) return ''
-    const d = new Date(ts)
-    return isNaN(d) ? '' : d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
-}
-
 export default function CashFlowCard({
     actualCash = 0,
     actualTransfer = 0,
@@ -32,7 +24,8 @@ export default function CashFlowCard({
     expenses = [],
     payments = [],   // NEW: expense_payments của ngày này (cash-out thực, theo paid_at)
     expenseCategories = [],  // nhãn chi phí — nhóm section Vận hành theo tên nhãn
-    salesCard,
+    // Khối doanh thu (SalesCard + biểu đồ) render phía trên panel Thực thu.
+    children,
     // Inline-edit props (today scope on /daily-report). When `editable` is true the
     // Tiền mặt / Chuyển khoản rows become text inputs. The Lưu thực thu CTA itself
     // lives as a FAB on DailyReportPage so it shares position/style with Lưu báo cáo.
@@ -119,6 +112,9 @@ export default function CashFlowCard({
         const k = catById.get(e.category_id)?.group_section
         return (k === 'overhead' || k === 'inventory' || k === 'non_operating') ? k : 'operating'
     }
+    // Trả về CÙNG shape với block Tồn kho bên dưới ({label, total, count, children})
+    // để cả 4 section dùng chung 1 component Section. Thứ tự children = thứ tự `tagged`
+    // (trong ca trước, sau chốt ca sau) — giữ nguyên như khi tách 2 mảng inShift/postClose.
     const buildLabelGroups = (items) => {
         const map = new Map()
         for (const { e, phase } of items) {
@@ -126,9 +122,14 @@ export default function CashFlowCard({
             const label = cat?.name || 'Chi phí khác'
             const sortKey = cat ? (cat.sort_order ?? 100) : 999
             let g = map.get(label)
-            if (!g) { g = { label, sortKey, inShift: [], postClose: [], total: 0 }; map.set(label, g) }
-            g[phase].push(e)
+            if (!g) { g = { label, sortKey, total: 0, count: 0, children: [] }; map.set(label, g) }
+            g.children.push({
+                key: e.id, expense: e, date: dayMonthVN(e.created_at),
+                name: capFirst(e.name || 'Chi phí khác'), amount: e.amount,
+                phase: phase === 'inShift' ? 'in_shift' : 'post_close', method: methodOf(e),
+            })
             g.total += e.amount || 0
+            g.count += 1
             g.sortKey = Math.min(g.sortKey, sortKey)
         }
         return [...map.values()].sort((a, b) => a.sortKey - b.sortKey || a.label.localeCompare(b.label, 'vi'))
@@ -183,14 +184,14 @@ export default function CashFlowCard({
         const label = cat?.name || 'Mua nguyên liệu'
         const b = ensureBlock(label, cat?.sort_order ?? 100)
         b.total += e.amount || 0; b.count += 1
-        b.children.push({ key: e.id, expense: e, date: dayMonth(e.created_at), name: capFirst(e.name || label), amount: e.amount, phase: phase === 'inShift' ? 'in_shift' : 'post_close', method: methodOf(e) })
+        b.children.push({ key: e.id, expense: e, date: dayMonthVN(e.created_at), name: capFirst(e.name || label), amount: e.amount, phase: phase === 'inShift' ? 'in_shift' : 'post_close', method: methodOf(e) })
     }
     const inventoryBlocks = [...invBlocks.values()].sort((a, b) => a.sortKey - b.sortKey || a.label.localeCompare(b.label, 'vi'))
     const inventoryTotal = inventoryBlocks.reduce((s, b) => s + b.total, 0)
 
     return (
         <div className="flex flex-col gap-4">
-            {salesCard && <div className="w-full">{salesCard}</div>}
+            {children && <div className="w-full">{children}</div>}
 
             {/* PANEL 1: THỰC THU */}
             <div className={`w-full bg-surface rounded-[24px] p-5 shadow-sm border border-border/60 flex flex-col justify-center relative overflow-hidden group ${onboardingHintClass(hintCash || hintTransfer)}`}>
@@ -262,14 +263,14 @@ export default function CashFlowCard({
                 <h3 className="text-[14px] font-black text-text/90 uppercase tracking-wider mb-3 pl-1">Thực chi</h3>
 
                 {/* SECTION: VẬN HÀNH (luôn hiện) */}
-                <ExpenseSection title="Vận hành" total={operatingTotal} keyPrefix="op" groups={operatingGroups}
+                <Section title="Vận hành" total={operatingTotal} keyPrefix="op" blocks={operatingGroups}
                     expandedCats={expandedCats} toggleCat={toggleCat} emptyText="Không có chi phí vận hành" onEditExpense={onEditExpense} />
 
                 {/* SECTION: QUẢN LÝ & KHÁC (chỉ khi có chi) */}
                 {overheadGroups.length > 0 && (
                     <>
                         <div className="w-full h-[1px] bg-border/40 rounded-full my-3" />
-                        <ExpenseSection title="Quản lý & khác" total={overheadTotal} keyPrefix="oh" groups={overheadGroups}
+                        <Section title="Quản lý & khác" total={overheadTotal} keyPrefix="oh" blocks={overheadGroups}
                             expandedCats={expandedCats} toggleCat={toggleCat} onEditExpense={onEditExpense} />
                     </>
                 )}
@@ -277,7 +278,7 @@ export default function CashFlowCard({
                 <div className="w-full h-[1px] bg-border/40 rounded-full my-3" />
 
                 {/* SECTION: TỒN KHO (luôn hiện) — refill + chi phí nhãn tồn kho, gộp theo dòng */}
-                <BlockSection title="Tồn kho" total={inventoryTotal} keyPrefix="inv" blocks={inventoryBlocks}
+                <Section title="Tồn kho" total={inventoryTotal} keyPrefix="inv" blocks={inventoryBlocks}
                     expandedCats={expandedCats} toggleCat={toggleCat} emptyText="Không có chi tồn kho trong kỳ"
                     onEditExpense={onEditExpense} onEditRestockPayment={onEditRestockPayment} />
 
@@ -285,7 +286,7 @@ export default function CashFlowCard({
                 {nonOpGroups.length > 0 && (
                     <>
                         <div className="w-full h-[1px] bg-border/40 rounded-full my-3" />
-                        <ExpenseSection title="Ngoài kinh doanh" total={nonOpTotal} keyPrefix="nonop" groups={nonOpGroups}
+                        <Section title="Ngoài kinh doanh" total={nonOpTotal} keyPrefix="nonop" blocks={nonOpGroups}
                             expandedCats={expandedCats} toggleCat={toggleCat} onEditExpense={onEditExpense} />
                     </>
                 )}
@@ -365,37 +366,10 @@ function SectionHead({ title, total }) {
     )
 }
 
-// Section chi phí kiểu Vận hành/Quản lý/Ngoài KD — groups gom theo nhãn, mỗi nhãn
-// collapse, expand ra list `ngày · tên` (trong ca trước, sau chốt ca sau, chấm phase).
-function ExpenseSection({ title, total, keyPrefix, groups, expandedCats, toggleCat, emptyText, onEditExpense }) {
-    return (
-        <div className="flex flex-col gap-1 pl-1">
-            <SectionHead title={title} total={total} />
-            {groups.length === 0 ? (
-                emptyText ? <span className="text-[12px] text-text-secondary italic">{emptyText}</span> : null
-            ) : groups.map((g) => {
-                const k = `${keyPrefix}:${g.label}`
-                return (
-                    <CollapseGroup key={k} expanded={!!expandedCats[k]} onToggle={() => toggleCat(k)}
-                        label={g.label} count={g.inShift.length + g.postClose.length} total={g.total}>
-                        {g.inShift.map((e) => (
-                            <ItemRow key={e.id} date={dayMonth(e.created_at)} name={capFirst(e.name || 'Chi phí khác')} amount={e.amount} phase="in_shift" method={e.payment_method}
-                                onClick={onEditExpense && (() => onEditExpense(e))} />
-                        ))}
-                        {g.postClose.map((e) => (
-                            <ItemRow key={e.id} date={dayMonth(e.created_at)} name={capFirst(e.name || 'Chi phí khác')} amount={e.amount} phase="post_close" method={e.payment_method}
-                                onClick={onEditExpense && (() => onEditExpense(e))} />
-                        ))}
-                    </CollapseGroup>
-                )
-            })}
-        </div>
-    )
-}
-
-// Section Tồn kho — blocks đã gộp sẵn (refill theo nguyên liệu + chi phí nhãn tồn
-// kho + trả nợ), children là ItemRow props dựng sẵn.
-function BlockSection({ title, total, keyPrefix, blocks, expandedCats, toggleCat, emptyText, onEditExpense, onEditRestockPayment }) {
+// 1 section của panel Thực chi (Vận hành / Quản lý & khác / Tồn kho / Ngoài KD).
+// `blocks` đã gộp sẵn theo nhãn, mỗi nhãn collapse ra children là ItemRow props —
+// buildLabelGroups (chi phí) và invBlocks (đi chợ NVL) đều dựng đúng shape này.
+function Section({ title, total, keyPrefix, blocks, expandedCats, toggleCat, emptyText, onEditExpense, onEditRestockPayment }) {
     return (
         <div className="flex flex-col gap-1 pl-1">
             <SectionHead title={title} total={total} />
@@ -465,12 +439,13 @@ function PhaseDot({ phase }) {
 // Nhãn TM/CK đánh dấu phương thức trả của 1 dòng/nhóm chi phí. CK (chuyển khoản) tô
 // đậm hơn vì là khoản trừ vào "Thực nhận chuyển khoản" — manager hay đối soát thiếu.
 // 'mixed' = nhóm gồm cả 2 → "TM/CK". TM mặc định, mờ, để CK nổi lên.
+const METHOD_TAGS = {
+    cash: ['TM', 'text-text-dim border-border/50'],
+    transfer: ['CK', 'text-text border-border bg-surface-light'],
+    mixed: ['TM/CK', 'text-text border-border bg-surface-light'],
+}
 function MethodTag({ method }) {
-    const m = method === 'transfer' ? 'transfer' : method === 'mixed' ? 'mixed' : 'cash'
-    const label = m === 'transfer' ? 'CK' : m === 'mixed' ? 'TM/CK' : 'TM'
-    const cls = m === 'cash'
-        ? 'text-text-dim border-border/50'
-        : 'text-text border-border bg-surface-light'
+    const [label, cls] = METHOD_TAGS[method] || METHOD_TAGS.cash
     return (
         <span className={`shrink-0 text-[8px] font-black leading-none px-1 py-[2px] rounded border ${cls}`}>
             {label}

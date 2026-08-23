@@ -1,13 +1,7 @@
 import { useMemo, useState } from 'react'
-import { formatVND } from '../../utils'
+import { formatVND, capFirst } from '../../utils'
+import { dayMonthVN } from '../../utils/dateVN'
 import { buildCategoryBreakdown } from '../../utils/expenseCategoryBreakdown'
-
-const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
-const dayMonth = (ts) => {
-    if (!ts) return ''
-    const d = new Date(ts)
-    return isNaN(d) ? '' : d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
-}
 
 // "Chi phí khác" gom nhiều khoản lẻ → 1 dòng tổng đục. Cho bấm xổ ra từng khoản như
 // báo cáo dòng tiền (nhưng KHÔNG phân biệt TM/CK). Dòng nhãn khác giữ LineItem phẳng.
@@ -69,6 +63,8 @@ export default function FinanceCards({
     // Chi phí tồn kho (vật tư không kiểm kê) trừ sau Lợi nhuận gộp — KHÔNG lẫn COGS
     // (COGS tính từ tiêu hao công thức của hàng có kiểm kê), rồi mới tới vận hành.
     const operatingProfit = grossProfit - inventoryTotal - operatingTotal
+    // Biên lợi nhuận — 3 banner cùng công thức, doanh thu 0 thì hiện 0.00 thay vì NaN.
+    const margin = (amount) => (totalRevenue > 0 ? (amount / totalRevenue * 100).toFixed(2) : '0.00')
 
     return (
         <div className="grid grid-cols-2 gap-3.5">
@@ -93,7 +89,7 @@ export default function FinanceCards({
                 <div className="flex justify-between items-center mt-2 pl-1">
                     <span className="text-[11px] font-bold text-text-secondary uppercase">Biên lợi nhuận gộp</span>
                     <span className="text-[13px] font-black text-success tabular-nums">
-                        {totalRevenue > 0 ? ((grossProfit) / totalRevenue * 100).toFixed(2) : '0.00'}%
+                        {margin(grossProfit)}%
                     </span>
                 </div>
             </ProfitBanner>
@@ -118,7 +114,7 @@ export default function FinanceCards({
                 <div className="flex justify-between items-center mt-2 pl-1">
                     <span className="text-[11px] font-bold text-text-secondary uppercase">Biên vận hành</span>
                     <span className={`text-[13px] font-black tabular-nums ${operatingProfit >= 0 ? 'text-success' : 'text-danger'}`}>
-                        {totalRevenue > 0 ? (operatingProfit / totalRevenue * 100).toFixed(2) : '0.00'}%
+                        {margin(operatingProfit)}%
                     </span>
                 </div>
             </ProfitBanner>
@@ -132,7 +128,7 @@ export default function FinanceCards({
             </SimpleCard>
 
             {/* 7. LỢI NHUẬN RÒNG (NET PROFIT) */}
-            <NetProfitCard netProfit={netProfit} totalRevenue={totalRevenue} />
+            <NetProfitCard netProfit={netProfit} margin={margin} />
         </div>
     )
 }
@@ -181,7 +177,7 @@ function ExpandableLineItem({ label, amount, entries }) {
             {open && entries.map(e => (
                 <div key={e.id} className="flex justify-between items-center gap-2 pl-5">
                     <span className="text-[11px] font-medium text-text-secondary/90 min-w-0 truncate">
-                        {e.created_at && <span className="text-text-dim tabular-nums">{dayMonth(e.created_at)} · </span>}
+                        {e.created_at && <span className="text-text-dim tabular-nums">{dayMonthVN(e.created_at)} · </span>}
                         {capFirst(e.name || 'Chi phí khác')}
                     </span>
                     <span className="text-[11px] font-medium text-text/70 tabular-nums shrink-0">{formatVND(e.amount)}</span>
@@ -191,14 +187,13 @@ function ExpandableLineItem({ label, amount, entries }) {
     )
 }
 
-function ProfitBanner({ label, amount, onClick, children }) {
+function ProfitBanner({ label, amount, children }) {
     // Lợi nhuận âm → tô đỏ (danger) như NetProfitCard, không cứng màu xanh.
     const isPositive = amount >= 0
     return (
         <div
-            onClick={onClick}
-            className={`col-span-2 active:scale-[0.98] transition-all rounded-[24px] p-5 shadow-sm border flex flex-col justify-center relative overflow-hidden group cursor-pointer
-                ${isPositive ? 'bg-success/[0.03] border-success/30 hover:bg-success/[0.06]' : 'bg-danger/[0.03] border-danger/30 hover:bg-danger/[0.06]'}`}
+            className={`col-span-2 rounded-[24px] p-5 shadow-sm border flex flex-col justify-center relative overflow-hidden
+                ${isPositive ? 'bg-success/[0.03] border-success/30' : 'bg-danger/[0.03] border-danger/30'}`}
         >
             <div className={`absolute top-0 left-0 w-1.5 h-full ${isPositive ? 'bg-success/60' : 'bg-danger/60'}`} />
             <div className="flex justify-between items-center pl-1">
@@ -210,26 +205,24 @@ function ProfitBanner({ label, amount, onClick, children }) {
     )
 }
 
-function NetProfitCard({ netProfit, totalRevenue }) {
+function NetProfitCard({ netProfit, margin }) {
     const isPositive = netProfit >= 0
     return (
-        <div className={`col-span-2 rounded-[24px] p-5 shadow-sm border flex items-center justify-between relative overflow-hidden
+        <div className={`col-span-2 rounded-[24px] p-5 shadow-sm border flex flex-col justify-center relative overflow-hidden
             ${isPositive ? 'bg-success/[0.04] border-success/30' : 'bg-danger/[0.04] border-danger/30'}`}
         >
             <div className={`absolute top-0 left-0 w-1.5 h-full ${isPositive ? 'bg-success/80' : 'bg-danger/80'}`} />
-            <div className="flex-1 flex flex-col justify-center">
-                <div className="flex justify-between items-center pl-1">
-                    <h3 className="text-[14px] font-black text-text/80 uppercase tracking-wide">Lợi nhuận ròng</h3>
-                    <div className={`text-[14px] font-black tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>
-                        {formatVND(netProfit)}
-                    </div>
+            <div className="flex justify-between items-center pl-1">
+                <h3 className="text-[14px] font-black text-text/80 uppercase tracking-wide">Lợi nhuận ròng</h3>
+                <div className={`text-[14px] font-black tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>
+                    {formatVND(netProfit)}
                 </div>
-                <div className="flex justify-between items-center pl-1 mt-2">
-                    <span className="text-[11px] font-bold text-text-secondary uppercase">Biên ròng</span>
-                    <span className={`text-[13px] font-black tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>
-                        {totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(2) : '0.00'}%
-                    </span>
-                </div>
+            </div>
+            <div className="flex justify-between items-center pl-1 mt-2">
+                <span className="text-[11px] font-bold text-text-secondary uppercase">Biên ròng</span>
+                <span className={`text-[13px] font-black tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>
+                    {margin(netProfit)}%
+                </span>
             </div>
         </div>
     )
