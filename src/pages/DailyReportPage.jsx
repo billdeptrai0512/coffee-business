@@ -193,6 +193,10 @@ export default function DailyReportPage() {
     // dưới để dự báo đỡ nhạy với 1 ngày bất thường (nghỉ lễ, vắng khách đột xuất) của đúng 1 tuần.
     const [lastWeekItemsWeeks, setLastWeekItemsWeeks] = useState([])        // today−7/14/21: dự báo hôm nay (Soạn)
     const [nextDowItemsWeeks, setNextDowItemsWeeks] = useState([]) // today−6/13/20: dự báo mai (Chuẩn bị)
+    // Đã tải xong dữ liệu dự báo chưa. PHẢI tách khỏi 2 mảng trên vì `[]` vừa là "chưa tải"
+    // vừa là "tải xong, không có đơn" — mà 2 trạng thái đó dẫn tới 2 kết luận trái ngược về
+    // việc ca đã hoàn tất hay chưa. Xem isShiftFinalized.
+    const [forecastReady, setForecastReady] = useState(false)
 
     // "Soạn cho hôm nay" KHÔNG còn tick state riêng: checkbox suy ra từ Nhập thêm
     // (restock) và tick chỉ là lối tắt set/clear restock. restock đã sync Realtime nên
@@ -698,14 +702,20 @@ export default function DailyReportPage() {
     // bất thường (nghỉ lễ, vắng khách đột xuất). Service cache theo address+offset+day nên
     // rẻ khi re-mount.
     useEffect(() => {
+        setForecastReady(false)
         if (!isTodayScope || !selectedAddress) { setLastWeekItemsWeeks([]); setNextDowItemsWeeks([]); return }
         let alive = true
-        Promise.all(HISTORY_OFFSETS_TODAY.map(d => fetchLastWeekSameDayOrderItems(selectedAddress.id, d)))
-            .then(weeks => { if (alive) setLastWeekItemsWeeks(weeks.map(w => w || [])) })
-            .catch(() => { if (alive) setLastWeekItemsWeeks([]) })
-        Promise.all(HISTORY_OFFSETS_TOMORROW.map(d => fetchLastWeekSameDayOrderItems(selectedAddress.id, d)))
-            .then(weeks => { if (alive) setNextDowItemsWeeks(weeks.map(w => w || [])) })
-            .catch(() => { if (alive) setNextDowItemsWeeks([]) })
+        const weeksOf = (offsets) => Promise.all(offsets.map(d => fetchLastWeekSameDayOrderItems(selectedAddress.id, d)))
+        // Gộp 2 chuỗi vào 1 Promise.all: 6 request vẫn bắn song song như cũ, chỉ chờ áp state
+        // cùng lúc — để `forecastReady` chỉ bật khi CẢ HAI dự báo đã có mặt.
+        Promise.all([weeksOf(HISTORY_OFFSETS_TODAY), weeksOf(HISTORY_OFFSETS_TOMORROW)])
+            .then(([todayWeeks, tomorrowWeeks]) => {
+                if (!alive) return
+                setLastWeekItemsWeeks(todayWeeks.map(w => w || []))
+                setNextDowItemsWeeks(tomorrowWeeks.map(w => w || []))
+                setForecastReady(true)
+            })
+            .catch(() => { if (alive) { setLastWeekItemsWeeks([]); setNextDowItemsWeeks([]) } })
         return () => { alive = false }
     }, [isTodayScope, selectedAddress])
 
@@ -877,7 +887,12 @@ export default function DailyReportPage() {
     // "Chuẩn bị tồn kho" tính là xong khi danh sách mua RỖNG — tức đã nhập kho đủ target cho
     // mai (hoặc kho vốn đã đủ). Không còn tick thủ công nên đây là điều kiện trung thực.
     const allWarehousePrepDone = warehousePrepList.length === 0
-    const isShiftFinalized = cashAndCountDone && allPrepDone && allWarehousePrepDone
+    // forecastReady là ĐIỀU KIỆN CẦN, không phải chi tiết vụn: trước khi 6 query lịch sử về,
+    // lastWeekUsedMap/nextDowUsedMap còn rỗng ⇒ CẢ HAI list soạn/chuẩn bị rỗng ⇒ allPrepDone
+    // và allWarehousePrepDone đều true. Với người mở lại trang sau khi đã chốt ca (cashAndCountDone
+    // đã true sẵn) thì 3 vế cùng true trong đúng cửa sổ đó, và cái latch bên dưới GHI
+    // localStorage một chiều — HistoryPage đọc cờ này để xếp chi phí sau đó vào "Sau ca".
+    const isShiftFinalized = forecastReady && cashAndCountDone && allPrepDone && allWarehousePrepDone
 
     // Latch: một khi ca đã hoàn tất trong ngày thì KHÓA lại — forecast nhích lên do đơn
     // muộn sẽ không "mở lại" ca nữa. Cờ lưu localStorage theo địa chỉ+ngày (đúng key
@@ -907,7 +922,9 @@ export default function DailyReportPage() {
     // stageReady: chờ inventoryInputs load xong, nếu không activeStage lật qua 'audit' giả lúc
     // load → auto mở nhầm rồi để lại card thừa.
     const [autoStage, setAutoStage] = useState(null)
-    const stageReady = (inventory.ingredientsList?.length || 0) > 0 && !inventory.isLoadingIngredients
+    // Cùng lý do với isShiftFinalized: dự báo chưa về thì prepTodayList rỗng ⇒ activeStage
+    // nhảy thẳng sang 'audit'/'warehouse' và tự mở nhầm card.
+    const stageReady = forecastReady && (inventory.ingredientsList?.length || 0) > 0 && !inventory.isLoadingIngredients
     // Hoãn khi đang gõ (isDirty) — vd nhập Cuối kỳ làm allCounted lật — để khỏi mở/đóng card
     // gây mất focus.
     if (stageReady && activeStage !== autoStage && !inventory.isDirty) {
