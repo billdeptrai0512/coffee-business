@@ -29,8 +29,7 @@ export default function PastInventoryEditor({
     onSave,                  // async (newInventoryReport) => boolean (true = đã lưu). null → read-only.
     onDirtyChange,           // (dirty, lines) => void — báo cha để guard rời trang khi sửa chưa lưu
 }) {
-    // Không có onSave (staff, hoặc ngày không có phiếu chốt để UPDATE) → khoá luôn ô Cuối kỳ.
-    // isSubmitting disable hết input ⇒ hasEdits không bao giờ true ⇒ nút Lưu không hiện.
+    // Không có onSave (staff, hoặc ngày không có phiếu chốt để UPDATE) → xem-only.
     const readOnly = typeof onSave !== 'function'
     const [open, setOpen] = useState(true)
 
@@ -155,7 +154,8 @@ export default function PastInventoryEditor({
                 usedMap={usedMap}
                 consumptionBreakdown={consumptionBreakdown}
                 ingredientToProduct={ingredientToProduct}
-                isSubmitting={isSaving || readOnly}
+                isSubmitting={isSaving}
+                readOnly={readOnly}
                 lockWarehouseInputs={true}
                 baselineInputs={baselineInputs}
                 baselineVersion={version}
@@ -166,7 +166,7 @@ export default function PastInventoryEditor({
                 onInventoryChange={handleInventoryChange}
             />
 
-            {hasEdits && (
+            {!readOnly && hasEdits && (
                 <div className="flex justify-end">
                     <button
                         onClick={handleSave}

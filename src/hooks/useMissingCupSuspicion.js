@@ -9,6 +9,7 @@ import { startOfDayVN } from '../utils/dateVN'
 import { fetchReportByRange } from '../services/orderService'
 
 const EMPTY_HISTORY = { shiftClosings: [], orders: [], addressId: null }
+const NO_CANDIDATES = []
 
 // PROTOTYPE — nghi vấn "pha bán nhưng chưa bấm bill", nuôi MissingCupSuspicionCard.
 // Toàn bộ chuỗi 5 memo + fetch 14 ngày của tính năng này nằm gọn ở đây thay vì rải
@@ -28,7 +29,9 @@ export function useMissingCupSuspicion({
     // range khi user đang XEM scope tuần/tháng, còn card này cần cả khi xem "Hôm nay".
     const [fetched, setFetched] = useState(EMPTY_HISTORY)
     useEffect(() => {
-        if (!enabled || !addressId) return
+        // addressId === null (KHÁC undefined) là "Mẫu mặc định" — địa chỉ hợp lệ, không
+        // phải "chưa chọn địa chỉ". Cùng quy ước với useDailyReportData.
+        if (!enabled || addressId === undefined) return
         let alive = true
         const end = startOfDayVN(new Date()) // đầu ngày hôm nay = mốc kết thúc window (loại hôm nay)
         const start = new Date(end.getTime() - 14 * 86_400_000)
@@ -53,6 +56,7 @@ export function useMissingCupSuspicion({
     // InventoryReportCard) — đổi theo từng phím gõ của nhân viên.
     const haoHutByIngredient = useMemo(() => {
         const map = {}
+        if (!enabled) return map
         for (const ing of ingredientsList || []) {
             map[ing.ingredient] = computeHaoHut({
                 inventoryValue: inventoryInputs[ing.ingredient],
@@ -63,7 +67,7 @@ export function useMissingCupSuspicion({
             })
         }
         return map
-    }, [ingredientsList, inventoryInputs, restockInputs, openingInputs, openingStock, usedMap])
+    }, [enabled, ingredientsList, inventoryInputs, restockInputs, openingInputs, openingStock, usedMap])
 
     const historicalDailyHaoHut = useMemo(
         () => buildDailyHaoHutMap({
@@ -84,8 +88,12 @@ export function useMissingCupSuspicion({
         () => buildDayCandidateSets({ ingredientsList, historicalDailyHaoHut, recipes, products, noiseByIngredient: ingredientNoise }),
         [ingredientsList, historicalDailyHaoHut, recipes, products, ingredientNoise],
     )
+    // `enabled` chặn cả phần TÍNH, không chỉ fetch: người gõ kiểm kê nhiều nhất là
+    // nhân viên, mà nhân viên chính là ca enabled=false — trước đây vẫn quét toàn bộ
+    // công thức mỗi phím gõ rồi vứt kết quả đi.
     return useMemo(() => {
+        if (!enabled) return NO_CANDIDATES
         const today = findMissingCupCandidates({ ingredientsList, haoHutByIngredient, recipes, products, noiseByIngredient: ingredientNoise })
         return attachRepeatHistory(today, dayCandidateSets)
-    }, [ingredientsList, haoHutByIngredient, recipes, products, ingredientNoise, dayCandidateSets])
+    }, [enabled, ingredientsList, haoHutByIngredient, recipes, products, ingredientNoise, dayCandidateSets])
 }

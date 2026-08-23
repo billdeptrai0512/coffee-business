@@ -596,6 +596,8 @@ Hoàn toàn khả thi để bắt đầu làm Feature Flag, Schema, Trial grant 
   - `RangeReportPage` → gate toàn trang tương tự; `RangeLossCard` bị ẩn/khóa khi `tier=basic` (Pro-only card placeholder)
   - `InventoryRefillCard` → audit tab bị khóa khi `tier=basic`; click → `<UpsellSheet required="pro">`
   - Prop `canAccessAudit` truyền từ DailyReportPage xuống InventoryRefillCard
+  - ⚠️ Lịch sử: `InventoryRefillCard` đã bị xoá (2026-08) — ngày cũ dùng chung
+    `PastInventoryEditor`, gate ở Bước R6 bên dưới đã gỡ audit-upsell từ trước đó.
 
 - [x] **Bước 6 (Status Banner):** Hiển thị Banner trạng thái gói cước ở AddressSelectPage.
   - `src/components/AddressSelectPage/SubscriptionBadge.jsx` — badge per-address

@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatVND, parseVNDInput, capFirst } from '../../utils'
 import { dayMonthVN } from '../../utils/dateVN'
 import { ingredientLabel, normalizeIngredientCategory, INGREDIENT_CATEGORIES } from '../../utils/ingredients'
+import { groupMeta } from '../../constants/expenseGroups'
 import { computeCashFlowTotals } from '../../utils/reportStats'
 import { useProducts } from '../../contexts/ProductContext'
 import { onboardingHintClass } from '../../utils/onboardingHint'
@@ -108,13 +109,17 @@ export default function CashFlowCard({
     // Mỗi section gom theo TÊN nhãn, tách phase trong ca (chấm xám) / sau chốt ca
     // (chấm hổ phách). Bấm chấm xem chú thích phase.
     const catById = new Map((expenseCategories || []).map(c => [c.id, c]))
-    const expenseGroupKey = (e) => {
-        const k = catById.get(e.category_id)?.group_section
-        return (k === 'overhead' || k === 'inventory' || k === 'non_operating') ? k : 'operating'
-    }
+    // groupMeta rơi về EXPENSE_GROUPS[0] ('operating') cho nhãn legacy/null/không rõ.
+    const expenseGroupKey = (e) => groupMeta(catById.get(e.category_id)?.group_section).key
     // Trả về CÙNG shape với block Tồn kho bên dưới ({label, total, count, children})
     // để cả 4 section dùng chung 1 component Section. Thứ tự children = thứ tự `tagged`
     // (trong ca trước, sau chốt ca sau) — giữ nguyên như khi tách 2 mảng inShift/postClose.
+    // Dòng con của cả 2 producer (chi phí gắn nhãn + chi phí nhãn tồn kho) — cùng shape.
+    const toItemRow = (e, phase, fallbackLabel) => ({
+        key: e.id, expense: e, date: dayMonthVN(e.created_at),
+        name: capFirst(e.name || fallbackLabel), amount: e.amount,
+        phase: phase === 'inShift' ? 'in_shift' : 'post_close', method: methodOf(e),
+    })
     const buildLabelGroups = (items) => {
         const map = new Map()
         for (const { e, phase } of items) {
@@ -123,11 +128,7 @@ export default function CashFlowCard({
             const sortKey = cat ? (cat.sort_order ?? 100) : 999
             let g = map.get(label)
             if (!g) { g = { label, sortKey, total: 0, count: 0, children: [] }; map.set(label, g) }
-            g.children.push({
-                key: e.id, expense: e, date: dayMonthVN(e.created_at),
-                name: capFirst(e.name || 'Chi phí khác'), amount: e.amount,
-                phase: phase === 'inShift' ? 'in_shift' : 'post_close', method: methodOf(e),
-            })
+            g.children.push(toItemRow(e, phase, 'Chi phí khác'))
             g.total += e.amount || 0
             g.count += 1
             g.sortKey = Math.min(g.sortKey, sortKey)
@@ -138,12 +139,13 @@ export default function CashFlowCard({
     for (const e of shiftExpenses) tagged[expenseGroupKey(e)].push({ e, phase: 'inShift' })
     for (const e of afterShiftOps) tagged[expenseGroupKey(e)].push({ e, phase: 'postClose' })
 
-    const operatingGroups = buildLabelGroups(tagged.operating)
-    const overheadGroups = buildLabelGroups(tagged.overhead)
-    const nonOpGroups = buildLabelGroups(tagged.non_operating)
-    const operatingTotal = operatingGroups.reduce((s, g) => s + g.total, 0)
-    const overheadTotal = overheadGroups.reduce((s, g) => s + g.total, 0)
-    const nonOpTotal = nonOpGroups.reduce((s, g) => s + g.total, 0)
+    const sectionOf = (key) => {
+        const groups = buildLabelGroups(tagged[key])
+        return { groups, total: groups.reduce((s, g) => s + g.total, 0) }
+    }
+    const operating = sectionOf('operating')
+    const overhead = sectionOf('overhead')
+    const nonOp = sectionOf('non_operating')
 
     // ── Section TỒN KHO — mua NVL refill (gom theo nhóm nguyên liệu) GỘP với chi phí
     // gắn nhãn nhóm "Chi phí tồn kho" (vật tư không kiểm kê) cùng tên nhãn, + Trả nợ cũ.
@@ -184,7 +186,7 @@ export default function CashFlowCard({
         const label = cat?.name || 'Mua nguyên liệu'
         const b = ensureBlock(label, cat?.sort_order ?? 100)
         b.total += e.amount || 0; b.count += 1
-        b.children.push({ key: e.id, expense: e, date: dayMonthVN(e.created_at), name: capFirst(e.name || label), amount: e.amount, phase: phase === 'inShift' ? 'in_shift' : 'post_close', method: methodOf(e) })
+        b.children.push(toItemRow(e, phase, label))
     }
     const inventoryBlocks = [...invBlocks.values()].sort((a, b) => a.sortKey - b.sortKey || a.label.localeCompare(b.label, 'vi'))
     const inventoryTotal = inventoryBlocks.reduce((s, b) => s + b.total, 0)
@@ -263,14 +265,14 @@ export default function CashFlowCard({
                 <h3 className="text-[14px] font-black text-text/90 uppercase tracking-wider mb-3 pl-1">Thực chi</h3>
 
                 {/* SECTION: VẬN HÀNH (luôn hiện) */}
-                <Section title="Vận hành" total={operatingTotal} keyPrefix="op" blocks={operatingGroups}
+                <Section title="Vận hành" total={operating.total} blocks={operating.groups}
                     expandedCats={expandedCats} toggleCat={toggleCat} emptyText="Không có chi phí vận hành" onEditExpense={onEditExpense} />
 
                 {/* SECTION: QUẢN LÝ & KHÁC (chỉ khi có chi) */}
-                {overheadGroups.length > 0 && (
+                {overhead.groups.length > 0 && (
                     <>
                         <div className="w-full h-[1px] bg-border/40 rounded-full my-3" />
-                        <Section title="Quản lý & khác" total={overheadTotal} keyPrefix="oh" blocks={overheadGroups}
+                        <Section title="Quản lý & khác" total={overhead.total} blocks={overhead.groups}
                             expandedCats={expandedCats} toggleCat={toggleCat} onEditExpense={onEditExpense} />
                     </>
                 )}
@@ -278,15 +280,15 @@ export default function CashFlowCard({
                 <div className="w-full h-[1px] bg-border/40 rounded-full my-3" />
 
                 {/* SECTION: TỒN KHO (luôn hiện) — refill + chi phí nhãn tồn kho, gộp theo dòng */}
-                <Section title="Tồn kho" total={inventoryTotal} keyPrefix="inv" blocks={inventoryBlocks}
+                <Section title="Tồn kho" total={inventoryTotal} blocks={inventoryBlocks}
                     expandedCats={expandedCats} toggleCat={toggleCat} emptyText="Không có chi tồn kho trong kỳ"
                     onEditExpense={onEditExpense} onEditRestockPayment={onEditRestockPayment} />
 
                 {/* SECTION: NGOÀI KINH DOANH (chỉ khi có chi) — không vào lợi nhuận */}
-                {nonOpGroups.length > 0 && (
+                {nonOp.groups.length > 0 && (
                     <>
                         <div className="w-full h-[1px] bg-border/40 rounded-full my-3" />
-                        <Section title="Ngoài kinh doanh" total={nonOpTotal} keyPrefix="nonop" blocks={nonOpGroups}
+                        <Section title="Ngoài kinh doanh" total={nonOp.total} blocks={nonOp.groups}
                             expandedCats={expandedCats} toggleCat={toggleCat} onEditExpense={onEditExpense} />
                     </>
                 )}
@@ -369,14 +371,14 @@ function SectionHead({ title, total }) {
 // 1 section của panel Thực chi (Vận hành / Quản lý & khác / Tồn kho / Ngoài KD).
 // `blocks` đã gộp sẵn theo nhãn, mỗi nhãn collapse ra children là ItemRow props —
 // buildLabelGroups (chi phí) và invBlocks (đi chợ NVL) đều dựng đúng shape này.
-function Section({ title, total, keyPrefix, blocks, expandedCats, toggleCat, emptyText, onEditExpense, onEditRestockPayment }) {
+function Section({ title, total, blocks, expandedCats, toggleCat, emptyText, onEditExpense, onEditRestockPayment }) {
     return (
         <div className="flex flex-col gap-1 pl-1">
             <SectionHead title={title} total={total} />
             {blocks.length === 0 ? (
                 emptyText ? <span className="text-[12px] text-text-secondary italic">{emptyText}</span> : null
             ) : blocks.map((b) => {
-                const k = `${keyPrefix}:${b.label}`
+                const k = `${title}:${b.label}`
                 return (
                     <CollapseGroup key={k} expanded={!!expandedCats[k]} onToggle={() => toggleCat(k)}
                         label={b.label} count={b.count} total={b.total}>

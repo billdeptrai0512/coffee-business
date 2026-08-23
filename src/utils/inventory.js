@@ -54,6 +54,20 @@ function groupRecipesByProduct(recipes) {
  * @param {Object} extraIngredients - Map extra_id -> array of {ingredient, amount}
  * @returns {Object} object mapping ingredient -> tổng số lượng tiêu hao
  */
+// Chuẩn hoá item của MỘT đơn về { productId, qty, extras } — nguồn duy nhất cho mọi
+// chỗ nạp đơn vào calculateEstimatedConsumption/buildIngredientToProduct. Nhận cả 3
+// shape đang tồn tại: order_items (server), orderItems / cart (đơn offline chờ sync).
+export function orderItemsOf(order) {
+    return (order.order_items || order.orderItems || order.cart || []).map(i => ({
+        productId: i.product_id || i.productId,
+        qty: i.quantity || i.qty || 1,
+        extras: i.extra_ids ? i.extra_ids.map(id => ({ id })) : (i.extras || []),
+    }))
+}
+
+// Đơn còn sống (chưa xoá) — server dùng deleted_at, đơn offline dùng deletedAt.
+export const isLiveOrder = (o) => !o.deleted_at && !o.deletedAt
+
 export function calculateEstimatedConsumption(orderItems, recipes, extraIngredients) {
     const estimated = {};
     const recipesByProduct = groupRecipesByProduct(recipes);
@@ -458,9 +472,13 @@ export function findMissingCupCandidates({ ingredientsList = [], haoHutByIngredi
         ;(recipeByProduct[r.product_id] ??= []).push({ ingredient: r.ingredient, amount: r.amount })
     }
 
+    // Index 1 lần: vòng dưới chạy mỗi product-có-công-thức, và cả hàm này chạy lại
+    // mỗi phím gõ + 14 lần trong buildDayCandidateSets — .find() mỗi dòng là quét lại
+    // cả bảng products mỗi lần.
+    const productById = new Map((products || []).map(p => [p.id, p]))
     const candidates = []
     for (const [productId, recipeRows] of Object.entries(recipeByProduct)) {
-        const product = products.find(p => p.id === productId)
+        const product = productById.get(productId)
         // Giá 0đ (món test/chưa cấu hình giá, vd "Trà đá"/"Kem muối" mặc định) → không
         // có chuyện "bán thiếu ghi nhận" vì không tốn tiền để bán — loại khỏi nghi vấn.
         if (!product?.is_active || !(Number(product.price) > 0)) continue
@@ -535,11 +553,7 @@ export function buildDailyHaoHutMap({ shiftClosings = [], orders = [], recipes =
     for (const o of orders) {
         if (o.deleted_at) continue
         const dayStr = dateStringVN(new Date(o.created_at))
-        ;(dailyOrderItems[dayStr] ??= []).push(...(o.order_items || []).map(i => ({
-            productId: i.product_id || i.productId,
-            qty: i.quantity || i.qty || 1,
-            extras: i.extra_ids ? i.extra_ids.map(id => ({ id })) : (i.extras || []),
-        })))
+        ;(dailyOrderItems[dayStr] ??= []).push(...orderItemsOf(o))
     }
     const dailyConsumption = {}
     for (const [dayStr, items] of Object.entries(dailyOrderItems)) {

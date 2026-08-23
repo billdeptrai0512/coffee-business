@@ -56,8 +56,9 @@ export default function ShiftPrepCard({
                         const isSkipped = !isDone && !!skipped[it.ingredient]
                         const muted = isDone || isSkipped // đã xử lý (nhập hoặc bỏ qua) → mờ + gạch ngang
                         // Kho không đủ cho NHU CẦU hôm nay (kho < Cần) → tô đỏ: soạn hết kho vẫn
-                        // thiếu, cần mua thêm. Đã xử lý rồi thì thôi cảnh báo.
-                        const shortfall = !muted && !restockMode && it.warehouse != null && it.warehouse < it.need
+                        // thiếu, cần mua thêm. Đã xử lý rồi thì thôi cảnh báo. Chỉ đọc ở nhánh
+                        // skipMode (card Soạn) bên dưới — card Chuẩn bị kho không cảnh báo kiểu này.
+                        const shortfall = !muted && it.warehouse != null && it.warehouse < it.need
 
                         const leadIcon = restockMode ? (
                             <span className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-primary bg-primary/10" title="Nhập kho">

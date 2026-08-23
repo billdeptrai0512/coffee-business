@@ -11,7 +11,7 @@ import { useShiftClosingSave } from '../hooks/useShiftClosingSave'
 import { useShiftInventoryState } from '../hooks/useShiftInventoryState'
 import { useDailyReportData } from '../hooks/useDailyReportData'
 import { onTabReturn } from '../utils/tabVisibility'
-import { calculateEstimatedConsumption, calculateConsumptionBreakdown, splitCogsByCategory, calculateLossValue, buildRecipeIngredientSet, buildIngredientToProduct, averageIngredientMaps, r1 } from '../utils/inventory'
+import { calculateEstimatedConsumption, calculateConsumptionBreakdown, splitCogsByCategory, calculateLossValue, buildRecipeIngredientSet, buildIngredientToProduct, orderItemsOf, isLiveOrder, averageIngredientMaps, r1 } from '../utils/inventory'
 import { ingredientLabel, getIngredientUnit, lookupByLabel } from '../utils/ingredients'
 import { findCoffeeIngredient, findIngredientByLabel } from '../utils/onboardingHint'
 import { readOnboardingState, DEFAULT_ONBOARDING_STATE, isCashFlowProgressDone, isInventoryProgressDone } from '../utils/onboardingStorage'
@@ -92,13 +92,12 @@ export default function DailyReportPage() {
     // Date selection (scope/offset/customRange + every transition handler) lives in
     // the shared hook so /daily-report and /history stay in lock-step. Seeded from
     // nav state so a week/month/custom window survives the Nhật ký ↔ Báo cáo switch.
-    const date = useDateScope(location.state)
     const {
         scope, offset, customRange,
         dayInputValue, canGoForwardDay, canGoForwardPeriod, navState: dateNavState,
         goPrevDay, goNextDay, goOffsetPrev, goOffsetNext,
         applyRange, shiftRange, canShiftRangeForward, applyPreset, goToDate,
-    } = date
+    } = useDateScope(location.state)
 
 
     // Deep-link: open on a specific past date passed via nav state (e.g. from a
@@ -373,6 +372,10 @@ export default function DailyReportPage() {
     // "Range" = khoảng NHIỀU NGÀY. Biểu đồ đường cộng dồn theo GIỜ chỉ có nghĩa cho 1
     // ngày (dòng tiền trong ngày); week/month/custom-nhiều-ngày phải dùng biểu đồ cột.
     // Trước đây bỏ sót custom range nhiều ngày → vẫn hiện line chart sai.
+    // Tab đang hiện khu Tồn kho. Dùng chung cho điều kiện render card lẫn cờ `enabled`
+    // của useMissingCupSuspicion — 2 chỗ viết tay cùng 1 predicate là cách card bị
+    // render ra mà hook đã tắt (rỗng vĩnh viễn).
+    const showsInventoryTab = view === VIEW_ALL || view === VIEW_INVENTORY
     const isRangeScope = scope === 'week' || scope === 'month'
         || (scope === 'custom' && !isSameDayVN(rangeStart, rangeEnd))
 
@@ -673,13 +676,7 @@ export default function DailyReportPage() {
     const todayOrderItems = useMemo(() => {
         if (!isTodayScope) return []
         const items = []
-        todayOrders.filter(o => !o.deleted_at && !o.deletedAt).forEach(o => {
-            (o.order_items || []).forEach(i => items.push({
-                productId: i.product_id || i.productId,
-                qty: i.quantity || i.qty || 1,
-                extras: i.extra_ids ? i.extra_ids.map(id => ({ id })) : (i.extras || [])
-            }))
-        })
+        todayOrders.filter(isLiveOrder).forEach(o => { items.push(...orderItemsOf(o)) })
         offlineToday.forEach(o => {
             (o.cart || o.orderItems || []).forEach(i => items.push({
                 productId: i.productId,
@@ -949,7 +946,6 @@ export default function DailyReportPage() {
         [todayOrderItems, recipes, extraIngredients, products, productExtras]
     )
 
-    // Dominant product per ingredient — drives "Tương đương N ly <product>" on the
     // "≈ N ly <món>" cạnh mỗi dòng hao hụt — xem buildIngredientToProduct.
     const ingredientToProduct = useMemo(
         () => buildIngredientToProduct({ orderItems: todayOrderItems, recipes, products }),
@@ -960,7 +956,7 @@ export default function DailyReportPage() {
     // Chỉ chạy khi xem HÔM NAY, ở tab có card, và không phải staff — lý do gate nằm
     // trong useMissingCupSuspicion.
     const missingCupCandidates = useMissingCupSuspicion({
-        enabled: isTodayScope && !isStaff && (view === VIEW_ALL || view === VIEW_INVENTORY),
+        enabled: isTodayScope && !isStaff && showsInventoryTab,
         addressId: selectedAddress?.id,
         ingredientsList: inventory.ingredientsList,
         inventoryInputs: inventory.inventoryInputs,
@@ -1300,7 +1296,7 @@ export default function DailyReportPage() {
                             </CashFlowCard>
                         )}
 
-                        {(view === VIEW_ALL || view === VIEW_INVENTORY) && (
+                        {showsInventoryTab && (
                             <>
                                 {view === VIEW_ALL && (
                                     <div className="flex items-center gap-3 py-1 my-1 px-4">

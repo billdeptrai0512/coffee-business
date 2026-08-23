@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { buildIngredientToProduct, calculateEstimatedConsumption, buildRecipeIngredientSet, walkDailyIngredientDiff } from '../../utils/inventory';
+import { buildIngredientToProduct, calculateEstimatedConsumption, buildRecipeIngredientSet, orderItemsOf, r1, walkDailyIngredientDiff } from '../../utils/inventory';
 import { dateStringVN } from '../../utils/dateVN';
 import { ingredientLabel, getIngredientUnit } from '../../utils/ingredients';
 import { ChevronDown } from 'lucide-react';
@@ -35,12 +35,13 @@ export default function RangeLossCard({
         setExpandedRows(prev => ({ ...prev, [ingredient]: !prev[ingredient] }));
     };
 
-    const ingredientToProduct = useMemo(() => buildIngredientToProduct({
-        orderItems: orders.flatMap(o => o.deleted_at ? [] : (o.order_items || []).map(i => ({
-            productId: i.product_id || i.productId, qty: i.quantity || i.qty || 1,
-        }))),
-        recipes, products,
-    }), [recipes, products, orders]);
+    // Phẳng hoá 1 lần, dùng cho cả ingredientToProduct lẫn dailyOrderItems bên dưới.
+    const liveOrders = useMemo(() => orders.filter(o => !o.deleted_at), [orders]);
+
+    const ingredientToProduct = useMemo(
+        () => buildIngredientToProduct({ orderItems: liveOrders.flatMap(orderItemsOf), recipes, products }),
+        [recipes, products, liveOrders],
+    );
 
     const auditData = useMemo(() => {
         if (!shiftClosings || shiftClosings.length === 0) return { rows: [], totalLossValue: 0 };
@@ -52,16 +53,10 @@ export default function RangeLossCard({
 
         // --- Step 1: Build daily order-item lists keyed by YYYY-MM-DD ---
         const dailyOrderItems = {};
-        orders.forEach(o => {
-            if (o.deleted_at) return;
+        for (const o of liveOrders) {
             const dayStr = dateStringVN(new Date(o.created_at)); // YYYY-MM-DD theo giờ VN
-            if (!dailyOrderItems[dayStr]) dailyOrderItems[dayStr] = [];
-
-            (o.order_items || []).forEach(i => dailyOrderItems[dayStr].push({
-                productId: i.product_id || i.productId, qty: i.quantity || i.qty || 1,
-                extras: i.extra_ids ? i.extra_ids.map(id => ({ id })) : (i.extras || [])
-            }));
-        });
+            ;(dailyOrderItems[dayStr] ??= []).push(...orderItemsOf(o));
+        }
 
         // Pre-calculate estimated consumption per day
         const dailyConsumption = {};
@@ -117,13 +112,10 @@ export default function RangeLossCard({
             .filter(([_, data]) => data.diff <= 0.05 && data.daily.some(d => d.diff < -0.05))
             .map(([ingredient, data]) => {
                 const unit = getIngredientUnit(ingredient, '', ingredientUnits);
-                const diff = Math.round(data.diff * 10) / 10;
+                const diff = r1(data.diff);
                 // Chỉ 2 trạng thái tới được đây: filter phía trên đã bỏ row net dư và
                 // row không có ngày hụt nào ⇒ "Dư"/"Khớp" không bao giờ xảy ra.
                 const isNetLoss = diff < -0.05;
-                const diffText = isNetLoss ? `Hụt ${Math.abs(diff)} ${unit}` : 'Bù trừ';
-                const diffColor = isNetLoss ? 'text-danger' : 'text-text-secondary';
-                const diffBg = isNetLoss ? 'bg-danger/10' : 'bg-surface-light';
 
                 // Sort daily entries chronologically, only keep anomalous days
                 const dailyAnomalies = data.daily
@@ -151,16 +143,14 @@ export default function RangeLossCard({
                 }
 
                 return {
-                    ingredient, diff,
+                    ingredient, diff, isNetLoss,
                     diffValue: data.diffValue,
-                    diffText, diffColor, diffBg, unit,
-                    dailyAnomalies,
-                    equivText
+                    unit, dailyAnomalies, equivText,
                 };
             }).sort((a, b) => a.diffValue - b.diffValue);
 
         return { rows, totalLossValue };
-    }, [shiftClosings, prevShiftClosings, orders, recipes, extraIngredients, ingredientConfigs, ingredientUnits, ingredientToProduct]);
+    }, [shiftClosings, prevShiftClosings, liveOrders, recipes, extraIngredients, ingredientConfigs, ingredientUnits, ingredientToProduct]);
 
     if (!auditData.rows.length && auditData.totalLossValue === 0) return null;
 
@@ -175,6 +165,7 @@ export default function RangeLossCard({
                 {auditData.rows.map(item => {
                     const isExpanded = !!expandedRows[item.ingredient];
                     const moneyVal = Math.abs(item.diffValue);
+                    const tone = item.isNetLoss ? 'text-danger' : 'text-text-secondary';
                     return (
                         <div key={item.ingredient} className="flex flex-col border-b border-border/20 last:border-0 pb-2 last:pb-0">
                             <div
@@ -188,18 +179,18 @@ export default function RangeLossCard({
                                         </span>
                                         <ChevronDown size={12} className={`text-text-dim shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                                     </div>
-                                    <span className={`text-[11px] font-black tabular-nums mt-1 ${item.diffColor}`}>
+                                    <span className={`text-[11px] font-black tabular-nums mt-1 ${tone}`}>
                                         {item.equivText && <span className="opacity-80 font-medium text-[10px]">{item.equivText}</span>}
                                     </span>
                                 </div>
                                 <div className="flex flex-col items-end shrink-0 gap-1">
-                                    <div className={`px-2 py-0.5 rounded border border-transparent ${item.diffBg}`}>
-                                        <span className={`text-[11px] font-black tabular-nums ${item.diffColor}`}>
-                                            {item.diffText}
+                                    <div className={`px-2 py-0.5 rounded border border-transparent ${item.isNetLoss ? 'bg-danger/10' : 'bg-surface-light'}`}>
+                                        <span className={`text-[11px] font-black tabular-nums ${tone}`}>
+                                            {item.isNetLoss ? `Hụt ${Math.abs(item.diff)} ${item.unit}` : 'Bù trừ'}
                                         </span>
                                     </div>
                                     {moneyVal >= 1 && item.diffValue < 0 && (
-                                        <span className={`text-[11px] font-black tabular-nums ${item.diffColor}`}>
+                                        <span className={`text-[11px] font-black tabular-nums ${tone}`}>
                                             -{formatVND(moneyVal)}
                                         </span>
                                     )}

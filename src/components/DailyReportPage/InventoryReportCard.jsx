@@ -41,6 +41,10 @@ export default function InventoryReportCard({
     // Sửa lịch sử (ngày cũ): khóa Đầu kỳ + Nhập thêm read-only, chỉ cho sửa Cuối kỳ —
     // tránh đụng kho tổng (Nhập thêm nằm trong công thức warehouse anchor).
     lockWarehouseInputs = false,
+    // Xem-only toàn bảng (ngày cũ, không có quyền sửa). Khác isSubmitting ở chỗ nó là
+    // trạng thái VĨNH VIỄN của lượt xem → tô kiểu "khoá" như Đầu kỳ/Nhập thêm, không
+    // phải kiểu "đang bận lưu" (mờ đi). lockWarehouseInputs là ca riêng của nó.
+    readOnly = false,
     // Last-persisted snapshot — drives sort + collapse so live keystrokes don't
     // re-order rows while staff is mid-edit; row key includes baselineVersion so
     // every row remounts (→ collapses) right after a successful save.
@@ -145,6 +149,7 @@ export default function InventoryReportCard({
                     productRef={ingredientToProduct[ing.ingredient]}
                     isSubmitting={isSubmitting}
                     lockWarehouseInputs={lockWarehouseInputs}
+                    readOnly={readOnly}
                     onOpeningChange={onOpeningChange}
                     onRestockChange={onRestockChange}
                     onInventoryChange={onInventoryChange}
@@ -173,7 +178,7 @@ export default function InventoryReportCard({
 const IngredientRow = memo(function IngredientRow({
     ing, ingredientUnits, openingValue, openingFallback, isLocked, restockValue, inventoryValue,
     warehouseAvailable, used, breakdown, productRef,
-    isSubmitting, lockWarehouseInputs,
+    isSubmitting, lockWarehouseInputs, readOnly,
     onOpeningChange, onRestockChange, onInventoryChange,
     hint,
 }) {
@@ -295,19 +300,19 @@ const IngredientRow = memo(function IngredientRow({
                         label="Đầu kỳ"
                         value={openingDisplay}
                         unit={unit}
-                        disabled={isLocked || isSubmitting || lockWarehouseInputs}
+                        disabled={isLocked || isSubmitting || lockWarehouseInputs || readOnly}
                         onChange={(v) => onOpeningChange(ing.ingredient, v)}
-                        locked={isLocked || lockWarehouseInputs}
+                        locked={isLocked || lockWarehouseInputs || readOnly}
                     />
                     <div className="col-span-2">
                         <ColumnInput
                             label="Nhập thêm"
                             value={restockValue || ''}
                             unit={unit}
-                            disabled={isSubmitting || lockWarehouseInputs}
+                            disabled={isSubmitting || lockWarehouseInputs || readOnly}
                             onChange={(v) => onRestockChange(ing.ingredient, v)}
                             overflow={restockOverflow}
-                            locked={lockWarehouseInputs}
+                            locked={lockWarehouseInputs || readOnly}
                         />
                     </div>
                 </div>
@@ -363,7 +368,8 @@ const IngredientRow = memo(function IngredientRow({
                         label="Cuối kỳ"
                         value={inventoryValue ?? ''}
                         unit={unit}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || readOnly}
+                        locked={readOnly}
                         onChange={(v) => onInventoryChange(ing.ingredient, v)}
                         hint={hint && open}
                     />
