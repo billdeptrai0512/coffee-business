@@ -703,7 +703,11 @@ export default function DailyReportPage() {
     // rẻ khi re-mount.
     useEffect(() => {
         setForecastReady(false)
-        if (!isTodayScope || !selectedAddress) { setLastWeekItemsWeeks([]); setNextDowItemsWeeks([]); return }
+        // Gate theo tab: 2 map dự báo chỉ nuôi prepTodayList/warehousePrepList — 2 card của
+        // khu Tồn kho. Tab mặc định là Dòng tiền, nên trước đây mỗi lần mở trang là 6
+        // round-trip cho thứ chưa ai nhìn. An toàn được là nhờ forecastReady: chưa tải thì
+        // isShiftFinalized không thể true, không latch nhầm (xem chỗ khai báo nó).
+        if (!isTodayScope || !selectedAddress || !showsInventoryTab) { setLastWeekItemsWeeks([]); setNextDowItemsWeeks([]); return }
         let alive = true
         const weeksOf = (offsets) => Promise.all(offsets.map(d => fetchLastWeekSameDayOrderItems(selectedAddress.id, d)))
         // Gộp 2 chuỗi vào 1 Promise.all: 6 request vẫn bắn song song như cũ, chỉ chờ áp state
@@ -717,7 +721,7 @@ export default function DailyReportPage() {
             })
             .catch(() => { if (alive) { setLastWeekItemsWeeks([]); setNextDowItemsWeeks([]) } })
         return () => { alive = false }
-    }, [isTodayScope, selectedAddress])
+    }, [isTodayScope, selectedAddress, showsInventoryTab])
 
     const toUsedMap = useCallback((items) => calculateEstimatedConsumption(
         items.map(i => ({ productId: i.product_id, qty: i.quantity, extras: (i.extra_ids || []).map(id => ({ id })) })),
