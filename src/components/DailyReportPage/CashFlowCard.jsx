@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatVND, parseVNDInput, capFirst } from '../../utils'
 import { dayMonthVN } from '../../utils/dateVN'
@@ -57,24 +57,146 @@ export default function CashFlowCard({
     // tính ra vẫn chỉ là placeholder, hiện "—" thay vì "0đ" để khỏi trông như đã đối soát xong.
     const cashNotEntered = editable && !cashInput && !transferInput
 
-    // Payments của ngày (đã filter theo paid_at bởi report RPC). Tách nhóm để HIỂN THỊ:
-    //   nvlPayments      = đi chợ NVL (loại free_form)
-    //   freeFormPayments = chi "sau chốt ca" free_form
-    const nvlPayments = []
-    const freeFormPayments = []
-    for (const p of payments || []) {
-        if (p.invoice_metadata?.adjustment) continue
-        if (p.invoice_metadata?.free_form) freeFormPayments.push(p)
-        else nvlPayments.push(p)
-    }
-    const refillNvlPaid = nvlPayments.reduce((s, p) => s + (p.amount || 0), 0)
-    const refillFreeFormPaid = freeFormPayments.reduce((s, p) => s + (p.amount || 0), 0)
+    // Cả khối dựng section Thực chi dưới đây chỉ phụ thuộc payments/expenses/nhãn/
+    // ingredientConfigs — KHÔNG phụ thuộc ô tiền đang gõ. Component này không memo được
+    // (nhận children là JSX mới mỗi render), nên không có useMemo thì mỗi phím gõ — tiền
+    // mặt LẪN kiểm kê tồn, vì cả trang re-render chung — dựng lại toàn bộ group, 2 Map,
+    // 1 object/dòng chi phí, và 4 lần sort localeCompare('vi') (đối chiếu tiếng Việt là
+    // phần đắt nhất). Scope tháng ~200 chi phí + ~150 payment.
+    const {
+        totalExpenses, shiftExpenses, afterShiftOps,
+        operating, overhead, nonOp, inventoryBlocks, inventoryTotal,
+    } = useMemo(() => {
+        // Payments của ngày (đã filter theo paid_at bởi report RPC). Tách nhóm để HIỂN THỊ:
+        //   nvlPayments      = đi chợ NVL (loại free_form)
+        //   freeFormPayments = chi "sau chốt ca" free_form
+        const nvlPayments = []
+        const freeFormPayments = []
+        for (const p of payments || []) {
+            if (p.invoice_metadata?.adjustment) continue
+            if (p.invoice_metadata?.free_form) freeFormPayments.push(p)
+            else nvlPayments.push(p)
+        }
+        const refillNvlPaid = nvlPayments.reduce((s, p) => s + (p.amount || 0), 0)
+        const refillFreeFormPaid = freeFormPayments.reduce((s, p) => s + (p.amount || 0), 0)
 
-    // 2. Tổng chi phí — dùng số thực trả (paid_at-based), không tính nghĩa vụ chưa trả.
-    const totalExpenses = (dailyExpense || 0) + (refillFreeForm || refillFreeFormPaid) + refillNvlPaid
+        // 2. Tổng chi phí — dùng số thực trả (paid_at-based), không tính nghĩa vụ chưa trả.
+        const totalExpenses = (dailyExpense || 0) + (refillFreeForm || refillFreeFormPaid) + refillNvlPaid
 
-    const shiftExpenses = (expenses || []).filter(e => !e.is_refill)
-    const afterShiftOps = (expenses || []).filter(e => e.is_refill && e.metadata?.free_form)
+        const shiftExpenses = (expenses || []).filter(e => !e.is_refill)
+        const afterShiftOps = (expenses || []).filter(e => e.is_refill && e.metadata?.free_form)
+
+        // Gộp đi chợ theo TÊN nguyên liệu, bỏ ngày (scope nhiều ngày tên lặp lại mỗi
+        // ngày → 1 dòng/nguyên liệu ×số lần + tổng, sắp theo tổng giảm dần). Chi tiết
+        // từng ngày xem ở Nhật ký của nguyên liệu đó.
+        const groupByIngredient = (list) => {
+            const byName = new Map()
+            for (const p of list) {
+                const ing = p.invoice_metadata?.ingredient
+                const name = ing ? ingredientLabel(ing) : (p.invoice_name || 'Trả NCC')
+                let g = byName.get(name)
+                if (!g) { g = { name, key: p.id, amount: 0, count: 0, hasIn: false, hasPost: false, hasCash: false, hasTransfer: false, payments: [] }; byName.set(name, g) }
+                g.amount += p.amount || 0
+                g.count += 1
+                g.payments.push(p)
+                if (paymentPhase(p) === 'in_shift') g.hasIn = true; else g.hasPost = true
+                if (methodOf(p) === 'transfer') g.hasTransfer = true; else g.hasCash = true
+            }
+            return [...byName.values()]
+                .map(g => ({ ...g, phase: groupPhase(g.hasIn, g.hasPost), method: groupMethod(g.hasCash, g.hasTransfer) }))
+                .sort((a, b) => b.amount - a.amount)
+        }
+        // ── Phân chi phí non-refill theo group_section của nhãn (legacy/null → Vận hành).
+        // Mỗi section gom theo TÊN nhãn, tách phase trong ca (chấm xám) / sau chốt ca
+        // (chấm hổ phách). Bấm chấm xem chú thích phase.
+        const catById = new Map((expenseCategories || []).map(c => [c.id, c]))
+        // groupMeta rơi về EXPENSE_GROUPS[0] ('operating') cho nhãn legacy/null/không rõ.
+        const expenseGroupKey = (e) => groupMeta(catById.get(e.category_id)?.group_section).key
+        // Dòng con của cả 2 producer (chi phí gắn nhãn + chi phí nhãn tồn kho) — cùng shape.
+        const toItemRow = (e, phase, fallbackLabel) => ({
+            key: e.id, expense: e, date: dayMonthVN(e.created_at),
+            name: capFirst(e.name || fallbackLabel), amount: e.amount,
+            phase: phase === 'inShift' ? 'in_shift' : 'post_close', method: methodOf(e),
+        })
+        // Trả về CÙNG shape với block Tồn kho bên dưới ({label, total, count, children})
+        // để cả 4 section dùng chung 1 component Section. Thứ tự children = thứ tự `tagged`
+        // (trong ca trước, sau chốt ca sau) — giữ nguyên như khi tách 2 mảng inShift/postClose.
+        const buildLabelGroups = (items) => {
+            const map = new Map()
+            for (const { e, phase } of items) {
+                const cat = catById.get(e.category_id)
+                const label = cat?.name || 'Chi phí khác'
+                const sortKey = cat ? (cat.sort_order ?? 100) : 999
+                let g = map.get(label)
+                if (!g) { g = { label, sortKey, total: 0, count: 0, children: [] }; map.set(label, g) }
+                g.children.push(toItemRow(e, phase, 'Chi phí khác'))
+                g.total += e.amount || 0
+                g.count += 1
+                g.sortKey = Math.min(g.sortKey, sortKey)
+            }
+            return [...map.values()].sort((a, b) => a.sortKey - b.sortKey || a.label.localeCompare(b.label, 'vi'))
+        }
+        const tagged = { operating: [], overhead: [], inventory: [], non_operating: [] }
+        for (const e of shiftExpenses) tagged[expenseGroupKey(e)].push({ e, phase: 'inShift' })
+        for (const e of afterShiftOps) tagged[expenseGroupKey(e)].push({ e, phase: 'postClose' })
+
+        const sectionOf = (key) => {
+            const groups = buildLabelGroups(tagged[key])
+            return { groups, total: groups.reduce((s, g) => s + g.total, 0) }
+        }
+        const operating = sectionOf('operating')
+        const overhead = sectionOf('overhead')
+        const nonOp = sectionOf('non_operating')
+
+        // ── Section TỒN KHO — mua NVL refill (gom theo nhóm nguyên liệu) GỘP với chi phí
+        // gắn nhãn nhóm "Chi phí tồn kho" (vật tư không kiểm kê) cùng tên nhãn, + Trả nợ cũ.
+        // Gộp theo label để "Mua nguyên liệu" refill và chi phí nhãn "Mua nguyên liệu" về 1 dòng.
+        const catByKey = new Map(
+            (ingredientConfigs || []).map(c => [c.ingredient, normalizeIngredientCategory(c.category)])
+        )
+        const invBlocks = new Map()
+        const ensureBlock = (label, sortKey) => {
+            let b = invBlocks.get(label)
+            if (!b) { b = { label, sortKey, total: 0, count: 0, children: [] }; invBlocks.set(label, b) }
+            b.sortKey = Math.min(b.sortKey, sortKey)
+            return b
+        }
+        // Mọi payment NVL (đi chợ trả ngay LẪN trả nợ cũ) gom chung 1 lượt theo tên
+        // nguyên liệu — báo cáo dòng tiền chỉ quan tâm tiền ra trong kỳ, không phân
+        // biệt trả cho hoá đơn ngày nào.
+        for (const cat of INGREDIENT_CATEGORIES) {
+            const pays = nvlPayments.filter(p => (catByKey.get(p.invoice_metadata?.ingredient) || 'main') === cat.key)
+            if (pays.length === 0) continue
+            const b = ensureBlock(cat.key === 'packaging' ? 'Mua bao bì' : 'Mua nguyên liệu', cat.key === 'packaging' ? 20 : 10)
+            for (const r of groupByIngredient(pays)) {
+                b.total += r.amount; b.count += r.count
+                // Chỉ mở sửa được khi cả nhóm chỉ gộp từ 1 hoá đơn CÓ ingredient (1 expense_id
+                // + có invoice_metadata.ingredient) — gộp nhiều lần mua/trả nợ khác hoá đơn, hoặc
+                // payment không gắn nguyên liệu (vd trả nợ NCC chung), thì không có phiếu để mở.
+                const firstExpenseId = r.payments[0]?.expense_id
+                const oneInvoice = !!firstExpenseId && !!r.payments[0]?.invoice_metadata?.ingredient
+                    && r.payments.every(p => p.expense_id === firstExpenseId)
+                b.children.push({
+                    key: r.key, name: r.name, amount: r.amount, count: r.count, phase: r.phase, method: r.method,
+                    restockPayment: oneInvoice ? r.payments[0] : null,
+                })
+            }
+        }
+        for (const { e, phase } of tagged.inventory) {
+            const cat = catById.get(e.category_id)
+            const label = cat?.name || 'Mua nguyên liệu'
+            const b = ensureBlock(label, cat?.sort_order ?? 100)
+            b.total += e.amount || 0; b.count += 1
+            b.children.push(toItemRow(e, phase, label))
+        }
+        const inventoryBlocks = [...invBlocks.values()].sort((a, b) => a.sortKey - b.sortKey || a.label.localeCompare(b.label, 'vi'))
+        const inventoryTotal = inventoryBlocks.reduce((s, b) => s + b.total, 0)
+
+        return {
+            totalExpenses, shiftExpenses, afterShiftOps,
+            operating, overhead, nonOp, inventoryBlocks, inventoryTotal,
+        }
+    }, [payments, expenses, expenseCategories, ingredientConfigs, dailyExpense, refillFreeForm])
 
     // 1. Thực thu / Thực nhận — phân loại tiền mặt theo cờ `cash_phase` lưu trên từng
     //    phiếu NVL (đặt lúc nhập kho): in_shift → cộng Thực thu (dựng lại doanh thu tiền
@@ -84,112 +206,6 @@ export default function CashFlowCard({
         actualTotal, takeHomeCash, takeHomeTransfer, takeHome,
         inShiftRefillCash, inShiftOpsCash,
     } = computeCashFlowTotals({ liveCash, liveTransfer, payments, shiftExpenses, afterShiftExpenses: afterShiftOps })
-
-    // Gộp đi chợ theo TÊN nguyên liệu, bỏ ngày (scope nhiều ngày tên lặp lại mỗi
-    // ngày → 1 dòng/nguyên liệu ×số lần + tổng, sắp theo tổng giảm dần). Chi tiết
-    // từng ngày xem ở Nhật ký của nguyên liệu đó.
-    const groupByIngredient = (list) => {
-        const byName = new Map()
-        for (const p of list) {
-            const ing = p.invoice_metadata?.ingredient
-            const name = ing ? ingredientLabel(ing) : (p.invoice_name || 'Trả NCC')
-            let g = byName.get(name)
-            if (!g) { g = { name, key: p.id, amount: 0, count: 0, hasIn: false, hasPost: false, hasCash: false, hasTransfer: false, payments: [] }; byName.set(name, g) }
-            g.amount += p.amount || 0
-            g.count += 1
-            g.payments.push(p)
-            if (paymentPhase(p) === 'in_shift') g.hasIn = true; else g.hasPost = true
-            if (methodOf(p) === 'transfer') g.hasTransfer = true; else g.hasCash = true
-        }
-        return [...byName.values()]
-            .map(g => ({ ...g, phase: groupPhase(g.hasIn, g.hasPost), method: groupMethod(g.hasCash, g.hasTransfer) }))
-            .sort((a, b) => b.amount - a.amount)
-    }
-    // ── Phân chi phí non-refill theo group_section của nhãn (legacy/null → Vận hành).
-    // Mỗi section gom theo TÊN nhãn, tách phase trong ca (chấm xám) / sau chốt ca
-    // (chấm hổ phách). Bấm chấm xem chú thích phase.
-    const catById = new Map((expenseCategories || []).map(c => [c.id, c]))
-    // groupMeta rơi về EXPENSE_GROUPS[0] ('operating') cho nhãn legacy/null/không rõ.
-    const expenseGroupKey = (e) => groupMeta(catById.get(e.category_id)?.group_section).key
-    // Trả về CÙNG shape với block Tồn kho bên dưới ({label, total, count, children})
-    // để cả 4 section dùng chung 1 component Section. Thứ tự children = thứ tự `tagged`
-    // (trong ca trước, sau chốt ca sau) — giữ nguyên như khi tách 2 mảng inShift/postClose.
-    // Dòng con của cả 2 producer (chi phí gắn nhãn + chi phí nhãn tồn kho) — cùng shape.
-    const toItemRow = (e, phase, fallbackLabel) => ({
-        key: e.id, expense: e, date: dayMonthVN(e.created_at),
-        name: capFirst(e.name || fallbackLabel), amount: e.amount,
-        phase: phase === 'inShift' ? 'in_shift' : 'post_close', method: methodOf(e),
-    })
-    const buildLabelGroups = (items) => {
-        const map = new Map()
-        for (const { e, phase } of items) {
-            const cat = catById.get(e.category_id)
-            const label = cat?.name || 'Chi phí khác'
-            const sortKey = cat ? (cat.sort_order ?? 100) : 999
-            let g = map.get(label)
-            if (!g) { g = { label, sortKey, total: 0, count: 0, children: [] }; map.set(label, g) }
-            g.children.push(toItemRow(e, phase, 'Chi phí khác'))
-            g.total += e.amount || 0
-            g.count += 1
-            g.sortKey = Math.min(g.sortKey, sortKey)
-        }
-        return [...map.values()].sort((a, b) => a.sortKey - b.sortKey || a.label.localeCompare(b.label, 'vi'))
-    }
-    const tagged = { operating: [], overhead: [], inventory: [], non_operating: [] }
-    for (const e of shiftExpenses) tagged[expenseGroupKey(e)].push({ e, phase: 'inShift' })
-    for (const e of afterShiftOps) tagged[expenseGroupKey(e)].push({ e, phase: 'postClose' })
-
-    const sectionOf = (key) => {
-        const groups = buildLabelGroups(tagged[key])
-        return { groups, total: groups.reduce((s, g) => s + g.total, 0) }
-    }
-    const operating = sectionOf('operating')
-    const overhead = sectionOf('overhead')
-    const nonOp = sectionOf('non_operating')
-
-    // ── Section TỒN KHO — mua NVL refill (gom theo nhóm nguyên liệu) GỘP với chi phí
-    // gắn nhãn nhóm "Chi phí tồn kho" (vật tư không kiểm kê) cùng tên nhãn, + Trả nợ cũ.
-    // Gộp theo label để "Mua nguyên liệu" refill và chi phí nhãn "Mua nguyên liệu" về 1 dòng.
-    const catByKey = new Map(
-        (ingredientConfigs || []).map(c => [c.ingredient, normalizeIngredientCategory(c.category)])
-    )
-    const invBlocks = new Map()
-    const ensureBlock = (label, sortKey) => {
-        let b = invBlocks.get(label)
-        if (!b) { b = { label, sortKey, total: 0, count: 0, children: [] }; invBlocks.set(label, b) }
-        b.sortKey = Math.min(b.sortKey, sortKey)
-        return b
-    }
-    // Mọi payment NVL (đi chợ trả ngay LẪN trả nợ cũ) gom chung 1 lượt theo tên
-    // nguyên liệu — báo cáo dòng tiền chỉ quan tâm tiền ra trong kỳ, không phân
-    // biệt trả cho hoá đơn ngày nào.
-    for (const cat of INGREDIENT_CATEGORIES) {
-        const pays = nvlPayments.filter(p => (catByKey.get(p.invoice_metadata?.ingredient) || 'main') === cat.key)
-        if (pays.length === 0) continue
-        const b = ensureBlock(cat.key === 'packaging' ? 'Mua bao bì' : 'Mua nguyên liệu', cat.key === 'packaging' ? 20 : 10)
-        for (const r of groupByIngredient(pays)) {
-            b.total += r.amount; b.count += r.count
-            // Chỉ mở sửa được khi cả nhóm chỉ gộp từ 1 hoá đơn CÓ ingredient (1 expense_id
-            // + có invoice_metadata.ingredient) — gộp nhiều lần mua/trả nợ khác hoá đơn, hoặc
-            // payment không gắn nguyên liệu (vd trả nợ NCC chung), thì không có phiếu để mở.
-            const firstExpenseId = r.payments[0]?.expense_id
-            const oneInvoice = !!firstExpenseId && !!r.payments[0]?.invoice_metadata?.ingredient
-                && r.payments.every(p => p.expense_id === firstExpenseId)
-            b.children.push({
-                key: r.key, name: r.name, amount: r.amount, count: r.count, phase: r.phase, method: r.method,
-                restockPayment: oneInvoice ? r.payments[0] : null,
-            })
-        }
-    }
-    for (const { e, phase } of tagged.inventory) {
-        const cat = catById.get(e.category_id)
-        const label = cat?.name || 'Mua nguyên liệu'
-        const b = ensureBlock(label, cat?.sort_order ?? 100)
-        b.total += e.amount || 0; b.count += 1
-        b.children.push(toItemRow(e, phase, label))
-    }
-    const inventoryBlocks = [...invBlocks.values()].sort((a, b) => a.sortKey - b.sortKey || a.label.localeCompare(b.label, 'vi'))
-    const inventoryTotal = inventoryBlocks.reduce((s, b) => s + b.total, 0)
 
     return (
         <div className="flex flex-col gap-4">
