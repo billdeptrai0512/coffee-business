@@ -11,7 +11,7 @@ import { useShiftClosingSave } from '../hooks/useShiftClosingSave'
 import { useShiftInventoryState } from '../hooks/useShiftInventoryState'
 import { useDailyReportData } from '../hooks/useDailyReportData'
 import { onTabReturn } from '../utils/tabVisibility'
-import { calculateEstimatedConsumption, calculateConsumptionBreakdown, splitCogsByCategory, calculateLossValue, buildRecipeIngredientSet, averageIngredientMaps, r1 } from '../utils/inventory'
+import { calculateEstimatedConsumption, calculateConsumptionBreakdown, splitCogsByCategory, calculateLossValue, buildRecipeIngredientSet, buildIngredientToProduct, averageIngredientMaps, r1 } from '../utils/inventory'
 import { ingredientLabel, getIngredientUnit, lookupByLabel } from '../utils/ingredients'
 import { findCoffeeIngredient, findIngredientByLabel } from '../utils/onboardingHint'
 import { readOnboardingState, DEFAULT_ONBOARDING_STATE, isCashFlowProgressDone, isInventoryProgressDone } from '../utils/onboardingStorage'
@@ -960,28 +960,11 @@ export default function DailyReportPage() {
     )
 
     // Dominant product per ingredient — drives "Tương đương N ly <product>" on the
-    // Hao hụt row. Pick the recipe with the highest sales volume; skip cup/lid
-    // passthroughs (amountPerCup === 1) and ingredients that don't map to a named product.
-    const ingredientToProduct = useMemo(() => {
-        const sales = {}
-        todayOrderItems.forEach(i => { sales[i.productId] = (sales[i.productId] || 0) + (i.qty || 1) })
-        const map = {}
-            ; (recipes || []).forEach(r => {
-                if (!r.amount || r.amount <= 0) return
-                const s = sales[r.product_id] || 0
-                const cur = map[r.ingredient]
-                if (!cur || s > cur.sales) {
-                    map[r.ingredient] = { productId: r.product_id, amountPerCup: r.amount, sales: s }
-                }
-            })
-        for (const ing of Object.keys(map)) {
-            const ref = map[ing]
-            const p = productMap.get(ref.productId)
-            if (!p?.name || ref.amountPerCup === 1) { delete map[ing]; continue }
-            ref.productName = p.name.toLowerCase()
-        }
-        return map
-    }, [recipes, productMap, todayOrderItems])
+    // "≈ N ly <món>" cạnh mỗi dòng hao hụt — xem buildIngredientToProduct.
+    const ingredientToProduct = useMemo(
+        () => buildIngredientToProduct({ orderItems: todayOrderItems, recipes, products }),
+        [recipes, products, todayOrderItems],
+    )
 
     // PROTOTYPE — nghi vấn "pha bán nhưng chưa bấm bill" (MissingCupSuspicionCard).
     // Chỉ chạy khi xem HÔM NAY, ở tab có card, và không phải staff — lý do gate nằm

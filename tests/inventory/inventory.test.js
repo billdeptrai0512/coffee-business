@@ -2,7 +2,7 @@
 // Nguồn: src/utils/inventory.js
 
 import { describe, it, expect } from 'vitest';
-import { calculateEstimatedConsumption, calculateConsumptionBreakdown, calculateLossValue, buildRecipeIngredientSet, averageIngredientMaps } from '../../src/utils/inventory';
+import { calculateEstimatedConsumption, calculateConsumptionBreakdown, calculateLossValue, buildRecipeIngredientSet, buildIngredientToProduct, averageIngredientMaps } from '../../src/utils/inventory';
 
 const recipes = [
     { product_id: 'cf_den', ingredient: 'coffee_g', amount: 18 },
@@ -326,3 +326,44 @@ describe('calculateConsumptionBreakdown', () => {
     });
 });
 
+
+// buildIngredientToProduct — chọn "món đại diện" cho mỗi nguyên liệu để quy đổi
+// hao hụt → "≈ N ly <món>". Gộp từ 4 bản chép tay (DailyReportPage, RangeLossCard,
+// PastInventoryEditor, InventoryRefillCard đã xoá) nên cần chốt hành vi ở 1 chỗ.
+describe('buildIngredientToProduct', () => {
+    const products = [
+        { id: 'cf_den', name: 'Cà Phê Đen' },
+        { id: 'cf_sua', name: 'Cà Phê Sữa' },
+    ];
+
+    it('chọn món bán chạy nhất trong số các món dùng nguyên liệu đó', () => {
+        const map = buildIngredientToProduct({
+            orderItems: [{ productId: 'cf_den', qty: 3 }, { productId: 'cf_sua', qty: 10 }],
+            recipes, products,
+        });
+        expect(map['coffee_g'].productId).toBe('cf_sua');
+        expect(map['coffee_g'].amountPerCup).toBe(22);
+        expect(map['coffee_g'].productName).toBe('cà phê sữa');
+    });
+
+    it('loại nguyên liệu tỉ lệ 1:1 (ly/nắp) — "≈ 220 ly" cho "dư 220 cái" là vô nghĩa', () => {
+        const map = buildIngredientToProduct({
+            orderItems: [{ productId: 'cf_den', qty: 5 }],
+            recipes, products,
+        });
+        expect(map['cup']).toBeUndefined();
+    });
+
+    it('không có đơn nào vẫn map được (rơi về recipe gặp đầu tiên)', () => {
+        const map = buildIngredientToProduct({ orderItems: [], recipes, products });
+        expect(map['coffee_g'].productId).toBe('cf_den');
+    });
+
+    it('bỏ nguyên liệu trỏ tới product không còn trong danh sách', () => {
+        const map = buildIngredientToProduct({
+            orderItems: [{ productId: 'cf_sua', qty: 1 }],
+            recipes, products: [{ id: 'cf_den', name: 'Cà Phê Đen' }],
+        });
+        expect(map['condensed_milk_ml']).toBeUndefined();
+    });
+});

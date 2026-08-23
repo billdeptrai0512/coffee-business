@@ -371,6 +371,35 @@ export function formatPackedQty(qty, packSize, packUnit, baseUnit, opts = {}) {
     return parts.filter(Boolean).join(' + ')
 }
 
+// Với mỗi nguyên liệu, chọn "sản phẩm đại diện" = món BÁN CHẠY NHẤT có dùng nguyên
+// liệu đó, để quy đổi hao hụt → số ly tương đương ("≈ 33 ly cà phê sữa") giúp user
+// hình dung magnitude. Bỏ nguyên liệu tỉ lệ 1:1 (ly/nắp) — "≈ 220 ly cà phê sữa" cho
+// "Dư 220 cái" không thêm thông tin nào.
+//
+// orderItems: [{ productId, qty }] đã phẳng hoá (mọi caller đều có sẵn dạng này).
+export function buildIngredientToProduct({ orderItems = [], recipes = [], products = [] }) {
+    const sales = {}
+    for (const i of orderItems) sales[i.productId] = (sales[i.productId] || 0) + (i.qty || 1)
+
+    const map = {}
+    for (const r of recipes || []) {
+        if (!r.amount || r.amount <= 0) continue
+        const s = sales[r.product_id] || 0
+        const cur = map[r.ingredient]
+        // Ưu tiên best-seller; không có đơn nào thì rơi về recipe gặp đầu tiên.
+        if (!cur || s > cur.sales) map[r.ingredient] = { productId: r.product_id, amountPerCup: r.amount, sales: s }
+    }
+
+    const byId = new Map((products || []).map(p => [p.id, p]))
+    for (const ing of Object.keys(map)) {
+        const ref = map[ing]
+        const p = byId.get(ref.productId)
+        if (!p?.name || ref.amountPerCup === 1) { delete map[ing]; continue }
+        ref.productName = p.name.toLowerCase()
+    }
+    return map
+}
+
 // Làm tròn 1 chữ số thập phân — dùng chung cho mọi phép tồn/hao hụt để tránh 3 nơi
 // tự định nghĩa lại rồi lệch epsilon nhau.
 export const r1 = (n) => Math.round((Number(n) || 0) * 10) / 10

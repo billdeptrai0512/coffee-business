@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { calculateEstimatedConsumption, calculateConsumptionBreakdown } from '../../utils/inventory'
+import { buildIngredientToProduct, calculateEstimatedConsumption, calculateConsumptionBreakdown } from '../../utils/inventory'
 import { getIngredientUnit, ingredientLabel } from '../../utils/ingredients'
 import { norm } from '../../utils/fieldSync'
 import InventoryReportCard from './InventoryReportCard'
@@ -13,8 +13,7 @@ const NOOP = () => {}
 // fix khi kết ca nhập sai làm hao hụt/lợi nhuận ngày đó sai, mà không đụng kho tổng hiện tại.
 //
 // ponytail: usedMap/breakdown/ingredientToProduct tính lại tại đây từ orders của ngày đó (các
-// memo trong DailyReportPage đều gate `!isTodayScope → []`). Cùng công thức với RangeLossCard;
-// nâng cấp: tách helper dùng chung nếu xuất hiện chỗ thứ 4.
+// memo trong DailyReportPage đều gate `!isTodayScope → []`).
 export default function PastInventoryEditor({
     shiftClosing,
     yesterdayClosing,
@@ -55,24 +54,10 @@ export default function PastInventoryEditor({
         () => calculateConsumptionBreakdown(orderItems, recipes, extraIngredients, products, productExtras),
         [orderItems, recipes, extraIngredients, products, productExtras],
     )
-    const ingredientToProduct = useMemo(() => {
-        const sales = {}
-        orderItems.forEach(i => { sales[i.productId] = (sales[i.productId] || 0) + (i.qty || 1) })
-        const map = {}
-        ;(recipes || []).forEach(r => {
-            if (!r.amount || r.amount <= 0) return
-            const s = sales[r.product_id] || 0
-            const cur = map[r.ingredient]
-            if (!cur || s > cur.sales) map[r.ingredient] = { productId: r.product_id, amountPerCup: r.amount, sales: s }
-        })
-        for (const ing of Object.keys(map)) {
-            const ref = map[ing]
-            const p = products.find(pp => pp.id === ref.productId)
-            if (!p?.name || ref.amountPerCup === 1) { delete map[ing]; continue }
-            ref.productName = p.name.toLowerCase()
-        }
-        return map
-    }, [recipes, products, orderItems])
+    const ingredientToProduct = useMemo(
+        () => buildIngredientToProduct({ orderItems, recipes, products }),
+        [recipes, products, orderItems],
+    )
 
     // Đầu kỳ hiển thị (read-only): tồn cuối hôm qua, đè bởi item.opening nếu phiếu có lưu.
     const openingStock = useMemo(() => {

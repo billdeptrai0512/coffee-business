@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { calculateEstimatedConsumption, buildRecipeIngredientSet, walkDailyIngredientDiff } from '../../utils/inventory';
+import { buildIngredientToProduct, calculateEstimatedConsumption, buildRecipeIngredientSet, walkDailyIngredientDiff } from '../../utils/inventory';
 import { dateStringVN } from '../../utils/dateVN';
 import { ingredientLabel, getIngredientUnit } from '../../utils/ingredients';
 import { ChevronDown } from 'lucide-react';
@@ -35,42 +35,12 @@ export default function RangeLossCard({
         setExpandedRows(prev => ({ ...prev, [ingredient]: !prev[ingredient] }));
     };
 
-    // For each ingredient, pick a "reference product" = sản phẩm bán chạy nhất
-    // có dùng nguyên liệu đó. Dùng để quy đổi hụt/dư → số ly tương đương,
-    // giúp user hình dung magnitude (vd: "≈ 33 ly cà phê sữa").
-    const ingredientToProduct = useMemo(() => {
-        const sales = {};
-        orders.forEach(o => {
-            if (o.deleted_at) return;
-            (o.order_items || []).forEach(i => {
-                const pid = i.product_id || i.productId;
-                sales[pid] = (sales[pid] || 0) + (i.quantity || i.qty || 1);
-            });
-        });
-
-        const map = {};
-        (recipes || []).forEach(r => {
-            if (!r.amount || r.amount <= 0) return;
-            const s = sales[r.product_id] || 0;
-            const cur = map[r.ingredient];
-            // Prefer best-seller; fall back to first-seen recipe
-            if (!cur || s > cur.sales) {
-                map[r.ingredient] = { productId: r.product_id, amountPerCup: r.amount, sales: s };
-            }
-        });
-        // Resolve product names; drop entries whose product không tìm thấy hoặc 1:1 ratio
-        // (vd: nắp/ly — "≈ 220 ly cà phê sữa" cho "Dư 220 cái" không thêm thông tin)
-        for (const ing of Object.keys(map)) {
-            const ref = map[ing];
-            const p = products.find(pp => pp.id === ref.productId);
-            if (!p?.name || ref.amountPerCup === 1) {
-                delete map[ing];
-                continue;
-            }
-            ref.productName = p.name.toLowerCase();
-        }
-        return map;
-    }, [recipes, products, orders]);
+    const ingredientToProduct = useMemo(() => buildIngredientToProduct({
+        orderItems: orders.flatMap(o => o.deleted_at ? [] : (o.order_items || []).map(i => ({
+            productId: i.product_id || i.productId, qty: i.quantity || i.qty || 1,
+        }))),
+        recipes, products,
+    }), [recipes, products, orders]);
 
     const auditData = useMemo(() => {
         if (!shiftClosings || shiftClosings.length === 0) return { rows: [], totalLossValue: 0 };
@@ -148,26 +118,12 @@ export default function RangeLossCard({
             .map(([ingredient, data]) => {
                 const unit = getIngredientUnit(ingredient, '', ingredientUnits);
                 const diff = Math.round(data.diff * 10) / 10;
-                const hasAnomaly = data.daily.some(d => Math.abs(d.diff) > 0.05);
-                let diffText, diffColor, diffBg;
-
-                if (diff < -0.05) {
-                    diffText = `Hụt ${Math.abs(diff)} ${unit}`;
-                    diffColor = 'text-danger';
-                    diffBg = 'bg-danger/10';
-                } else if (diff > 0.05) {
-                    diffText = `Dư ${diff} ${unit}`;
-                    diffColor = 'text-warning';
-                    diffBg = 'bg-warning/10';
-                } else if (hasAnomaly) {
-                    diffText = 'Bù trừ';
-                    diffColor = 'text-text-secondary';
-                    diffBg = 'bg-surface-light';
-                } else {
-                    diffText = 'Khớp';
-                    diffColor = 'text-success';
-                    diffBg = 'bg-success/10';
-                }
+                // Chỉ 2 trạng thái tới được đây: filter phía trên đã bỏ row net dư và
+                // row không có ngày hụt nào ⇒ "Dư"/"Khớp" không bao giờ xảy ra.
+                const isNetLoss = diff < -0.05;
+                const diffText = isNetLoss ? `Hụt ${Math.abs(diff)} ${unit}` : 'Bù trừ';
+                const diffColor = isNetLoss ? 'text-danger' : 'text-text-secondary';
+                const diffBg = isNetLoss ? 'bg-danger/10' : 'bg-surface-light';
 
                 // Sort daily entries chronologically, only keep anomalous days
                 const dailyAnomalies = data.daily
@@ -237,7 +193,7 @@ export default function RangeLossCard({
                                     </span>
                                 </div>
                                 <div className="flex flex-col items-end shrink-0 gap-1">
-                                    <div className={`px-2 py-0.5 rounded border border-transparent ${item.diffBg} border-${item.diffColor.replace('text-', '')}/20`}>
+                                    <div className={`px-2 py-0.5 rounded border border-transparent ${item.diffBg}`}>
                                         <span className={`text-[11px] font-black tabular-nums ${item.diffColor}`}>
                                             {item.diffText}
                                         </span>
@@ -273,16 +229,9 @@ export default function RangeLossCard({
                 })}
             </div>
 
-            <div className="mt-2 flex flex-col">
-                <div
-                    className="pt-3 border-t border-border/40 flex items-center justify-between cursor-pointer"
-                >
-                    <div className="flex items-center gap-1">
-                        <span className="text-[14px] font-bold text-text-secondary">Tổng cộng:</span>
-                    </div>
-                    <span className="text-[14px] font-black text-danger tabular-nums">-{formatVND(auditData.totalLossValue)}</span>
-                </div>
-
+            <div className="mt-2 pt-3 border-t border-border/40 flex items-center justify-between">
+                <span className="text-[14px] font-bold text-text-secondary">Tổng cộng:</span>
+                <span className="text-[14px] font-black text-danger tabular-nums">-{formatVND(auditData.totalLossValue)}</span>
             </div>
         </div>
     );

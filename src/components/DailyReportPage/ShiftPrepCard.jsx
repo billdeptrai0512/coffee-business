@@ -19,16 +19,16 @@ export default function ShiftPrepCard({
     // lấy" để vẫn hoàn tất ca; bấm lại (↩) để hủy. skipped: { [ingredient]: true }.
     skipped = {},
     onSkip,
-    title = 'Soạn cho hôm nay',
-    icon = null,
+    title,
+    icon,
     // Nhãn cho số tồn ở dòng phụ: card Soạn = tồn quầy đầu ca ("Quầy"),
     // card Chuẩn bị kho = tổng tồn cho mai ("Tồn kho").
-    haveLabel = 'Còn',
-    emptyTitle = 'Kho đủ dùng!',
+    haveLabel,
+    emptyTitle,
     emptyHint = '',
-    // Khi set (vd "Mua"): dòng lớn = "<packVerb> N bịch", dòng nhỏ = "Cần X".
-    // Hợp với card đi chợ (mua theo bịch/hộp). Bỏ trống → dòng lớn là "Cần X" (soạn loose).
-    packVerb = null,
+    // Động từ CTA: "Lấy" (soạn ra quầy) / "Mua" (đi chợ). Dòng lớn = "<packVerb> N bịch"
+    // nếu có pack_size, không thì "<packVerb> X <đơn vị>".
+    packVerb,
     open = true,
     onToggleOpen,
 }) {
@@ -80,14 +80,12 @@ export default function ShiftPrepCard({
                                 </span>
                                 <div className="text-[11px] text-text-dim mt-0.5">
                                     {it.warehouse != null && (
-                                        <span className={`block ${shortfall ? 'text-danger font-bold' : ''}`}>
-                                            Tồn kho: {it.warehouse} {it.unit}
-                                        </span>
+                                        <span className="block">Tồn kho: {it.warehouse} {it.unit}</span>
                                     )}
                                     <span className="block">
                                         {haveLabel}: {it.tare > 0 && <>{it.tare} + </>}{it.have} {it.unit}
                                     </span>
-                                    {restockMode && it.boughtToday > 0 && (
+                                    {it.boughtToday > 0 && (
                                         <span className="block text-success">
                                             Đã mua hôm nay: {it.boughtToday} {it.unit}
                                         </span>
@@ -96,30 +94,12 @@ export default function ShiftPrepCard({
                             </div>
                         )
 
+                        // Không cấu hình pack_size (mua rời, vd Ống hút) → đếm theo đơn vị gốc.
                         const ctaText = (
                             <div className="flex flex-col items-end shrink-0">
-                                {packVerb && it.needPacks > 0 ? (
-                                    <span className={`text-[12px] font-black leading-tight text-right ${muted ? 'text-text-dim line-through' : 'text-primary'}`}>
-                                        {packVerb} {it.needPacks} {it.packUnit || ''}
-                                    </span>
-                                ) : packVerb ? (
-                                    // Không cấu hình pack_size (mua rời, vd Ống hút) → vẫn dùng packVerb,
-                                    // cùng cỡ chữ với dòng "Mua N packUnit" thay vì rơi về "Cần" của card Soạn.
-                                    <span className={`text-[12px] font-black leading-tight text-right ${muted ? 'text-text-dim line-through' : 'text-primary'}`}>
-                                        {packVerb} {it.need} {it.unit}
-                                    </span>
-                                ) : (
-                                    <>
-                                        <span className={`text-[14px] font-black leading-none tabular-nums ${muted ? 'text-text-dim line-through' : 'text-primary'}`}>
-                                            Cần {it.need} {it.unit}
-                                        </span>
-                                        {it.needPacks > 0 && (
-                                            <span className="text-[10px] font-bold text-text-dim mt-0.5">
-                                                {it.needPacks} {it.packUnit || ''} {ingredientLabel(it.ingredient).toLowerCase()}
-                                            </span>
-                                        )}
-                                    </>
-                                )}
+                                <span className={`text-[12px] font-black leading-tight text-right ${muted ? 'text-text-dim line-through' : 'text-primary'}`}>
+                                    {packVerb} {it.needPacks > 0 ? `${it.needPacks} ${it.packUnit || ''}` : `${it.need} ${it.unit}`}
+                                </span>
                             </div>
                         )
 
@@ -166,21 +146,19 @@ export default function ShiftPrepCard({
                             )
                         }
 
+                        // Còn lại là card "Chuẩn bị tồn kho" (restockMode) — bấm dòng mở phiếu Nhập kho.
                         return (
                             <button
                                 key={it.ingredient}
                                 type="button"
-                                onClick={() => restockMode ? onRestock(it.ingredient, it.needPacks > 0 ? it.needPacks : it.need) : onToggle?.(it.ingredient)}
+                                onClick={() => onRestock(it.ingredient, it.needPacks > 0 ? it.needPacks : it.need)}
                                 className="flex items-start gap-3 py-2.5 border-b border-border/20 last:border-0 text-left active:scale-[0.99] transition"
                             >
-                                {!restockMode && leadIcon}
                                 {nameDesc}
-                                {restockMode ? (
-                                    <div className="flex flex-col items-center gap-1.5 shrink-0">
-                                        {ctaText}
-                                        {leadIcon}
-                                    </div>
-                                ) : ctaText}
+                                <div className="flex flex-col items-center gap-1.5 shrink-0">
+                                    {ctaText}
+                                    {leadIcon}
+                                </div>
                             </button>
                         )
                     })}
