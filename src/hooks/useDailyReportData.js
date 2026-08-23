@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { fetchDailyReportContext, fetchReportByDate, fetchReportByRange } from '../services/orderService'
 import { dateStringVN } from '../utils/dateVN'
 import { calcRangeWithPrev } from '../utils/rangeCalc'
@@ -20,7 +20,26 @@ import { dedupeShiftClosingsByDay } from '../utils/reportStats'
  * patch the closing in place after a successful write, avoiding a round-trip
  * refetch just to update one field.
  */
+// Đo thời gian tải báo cáo (DEV). Mốc kết thúc = fetch xong + state đã set, CHƯA phải
+// đã vẽ xong — chênh 1 frame, không đáng đo riêng.
+//   fetch  — round-trip Supabase cho scope này. Đây là con số để so với ngân sách.
+//   mở trang — chỉ in ở lần đầu: tính từ navigation start nên gồm cả tải bundle + mount React.
+// Cũng ghi 1 entry User Timing → xem được trong tab Performance của DevTools, không chỉ console.
+function logReady(label, t0, firstLoadRef) {
+    if (!import.meta.env.DEV) return
+    const now = performance.now()
+    performance.measure(`daily-report:${label}`, { start: t0, end: now })
+    const fetchMs = Math.round(now - t0)
+    if (firstLoadRef.current) {
+        firstLoadRef.current = false
+        console.info(`[perf] daily-report(${label}) ready — fetch ${fetchMs}ms · từ lúc mở trang ${Math.round(now)}ms`)
+    } else {
+        console.info(`[perf] daily-report(${label}) ready — fetch ${fetchMs}ms`)
+    }
+}
+
 export function useDailyReportData({ addressId, scope, offset, customRange, onError }) {
+    const firstLoadRef = useRef(true)
     const [shiftClosing, setShiftClosing] = useState(null)
     const [yesterdayClosing, setYesterdayClosing] = useState(null)
     const [isAsyncReady, setIsAsyncReady] = useState(false)
@@ -67,6 +86,7 @@ export function useDailyReportData({ addressId, scope, offset, customRange, onEr
         if (addressId === undefined) return Promise.resolve()
 
         setIsAsyncReady(false)
+        const t0 = performance.now()
         let promise
         if (isTodayScope) {
             promise = fetchDailyReportContext(addressId)
@@ -108,7 +128,10 @@ export function useDailyReportData({ addressId, scope, offset, customRange, onEr
                 })
                 .catch((error) => onError?.(error, 'Tải báo cáo theo khoảng'))
         }
-        return promise.finally(() => setIsAsyncReady(true))
+        return promise.finally(() => {
+            setIsAsyncReady(true)
+            logReady(isTodayScope ? 'today' : scope, t0, firstLoadRef)
+        })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [addressId, scope, offset, rangeStart, rangeEnd, isTodayScope, prevStart, prevEnd])
 
