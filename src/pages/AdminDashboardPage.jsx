@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { fetchAdminDashboard } from '../services/adminDashboardService'
+import { fetchAdminDashboard, fetchAdminFunnelCohorts } from '../services/adminDashboardService'
 import { fetchGuestOnboardingFunnel } from '../services/onboardingFunnelService'
 import { openedLabelVN } from '../utils/dateVN'
 import MonetizationToggle from '../components/AddressSelectPage/MonetizationToggle'
@@ -142,23 +142,31 @@ function DashboardBody({ data, navigate, refreshToken }) {
 
     return (
         <>
-            <div className="mb-4">
-                <MonetizationToggle />
-            </div>
-            {/* OMTM: % dùng thử chuyển thành trả phí — số DUY NHẤT trả lời "lớp report
-                888k/6th có đáng tiền không". Mọi số khác trên trang này chỉ là bối cảnh
-                hoặc danh sách hành động, không cái nào thay được câu hỏi này. */}
+            {/* OMTM: dùng thử → trả phí — số DUY NHẤT trả lời "lớp report 888k/6th có
+                đáng tiền không". Mọi số khác trên trang này chỉ là bối cảnh hoặc danh
+                sách hành động, không cái nào thay được câu hỏi này. */}
             <ConversionHeroCard subscription={subscription} />
             <KpiRow subscription={subscription} attentionCount={attentionCount} paymentIssueCount={paymentIssueCount} navigate={navigate} />
+            {/* Kể một chiều theo đường đi của khách. Trước đây Snapshot (đích) đứng
+                trên Onboarding (đầu phễu) nên trang kể ngược. */}
             <div className="flex flex-col gap-4">
+                <OnboardingFunnelCard refreshToken={refreshToken} />
+                <CohortFunnelCard refreshToken={refreshToken} />
                 <SubscriptionSnapshotCard subscription={subscription} />
-                <OnboardingFunnelCard subscription={subscription} navigate={navigate} refreshToken={refreshToken} />
                 <ActivityCard items={activity} />
+            </div>
+            {/* Công tắc cấu hình, không phải số liệu — xuống cuối, đứng đầu trang chỉ
+                chiếm chỗ của câu mở đầu. */}
+            <div className="mt-4">
+                <MonetizationToggle />
             </div>
         </>
     )
 }
 
+// Số to là n/m chứ KHÔNG phải %: ở quy mô vài khách/tuần, mẫu số một chữ số làm
+// % nhảy 20-30% mỗi khi thêm đúng 1 chi nhánh — đọc như biến động lớn trong khi
+// thực tế chỉ là 1 người. Đảo lại khi mẫu số đủ lớn để % tự đứng được.
 function ConversionHeroCard({ subscription }) {
     const { conversion_rate_30d, trial_30d, converted_30d } = subscription
     return (
@@ -166,10 +174,8 @@ function ConversionHeroCard({ subscription }) {
             <p className="text-[10.5px] font-black uppercase tracking-wide text-white/70">Chuyển đổi dùng thử → trả phí (30 ngày)</p>
             {conversion_rate_30d != null ? (
                 <>
-                    <p className="text-[34px] font-black tabular-nums leading-tight mt-0.5">{conversion_rate_30d}%</p>
-                    {trial_30d != null && (
-                        <p className="text-[11px] font-bold text-white/80 mt-0.5">{converted_30d}/{trial_30d} chi nhánh dùng thử đã trả phí</p>
-                    )}
+                    <p className="text-[34px] font-black tabular-nums leading-tight mt-0.5">{converted_30d}/{trial_30d}</p>
+                    <p className="text-[11px] font-bold text-white/80 mt-0.5">chi nhánh dùng thử đã trả phí · {conversion_rate_30d}%</p>
                 </>
             ) : (
                 <p className="text-[13px] font-bold text-white/80 mt-1.5">Chưa đủ dữ liệu 30 ngày qua</p>
@@ -286,7 +292,7 @@ const RANGE_TABS = [
 // Tự fetch riêng (không qua fetchAdminDashboard) — 1 lần gọi trả cả 3 khoảng thời gian
 // (today/week/all), đổi tab KHÔNG cần round-trip mới. byRange = null khi RPC chưa apply
 // hoặc lỗi → ẩn hẳn phần guest funnel, không hỏng phần còn lại của dashboard.
-function OnboardingFunnelCard({ subscription, navigate, refreshToken }) {
+function OnboardingFunnelCard({ refreshToken }) {
     const [byRange, setByRange] = useState(null)
     const [range, setRange] = useState('week')
 
@@ -321,7 +327,6 @@ function OnboardingFunnelCard({ subscription, navigate, refreshToken }) {
                     <p className="text-[11px] text-text-dim">Chưa có khách nào vào dùng thử trong khoảng này</p>
                 )}
             </div>
-            <ActivationBlock subscription={subscription} navigate={navigate} />
         </div>
     )
 }
@@ -426,31 +431,70 @@ function GuestFunnelBody({ funnel }) {
     )
 }
 
-// v4: khúc tiếp theo của phễu, SAU đăng ký — dùng address_id thật (khác thực thể
-// với guest funnel theo visitor_id ẩn danh ở trên, nên tách khối riêng chứ không
-// nhét vào mảng `stages`). Trial chỉ bắt đầu ở ca chốt full đầu tiên (xem
-// docs/MONETIZATION.md §1) — "kẹt" ở đây nghĩa là đăng ký rồi nhưng chưa từng vận
-// hành đủ 1 ca để trial được cấp, đây chính là khúc quyết định giả thuyết "onboarding
-// tốt → trial tăng → subscription tăng".
-function ActivationBlock({ subscription, navigate }) {
-    const activated = subscription.activated_count
-    const pending = subscription.pending_activation_count
-    const stuck = subscription.never_activated_count
-    if (activated == null) return null // migration chưa apply → ẩn khối, không hỏng phần còn lại
+const COHORT_COLS = [
+    { key: 'created', label: 'Tạo' },
+    { key: 'first_order', label: 'Đơn' },
+    { key: 'trial_started', label: 'Trial' },
+    { key: 'paid', label: 'Trả phí' },
+]
+
+// Cohort theo TUẦN TẠO ĐỊA CHỈ — khác mọi số còn lại trên trang này (ảnh chụp
+// hôm nay): trả lời "tuần này có khá hơn tuần trước không". Tự fetch riêng như
+// OnboardingFunnelCard; RPC lỗi/chưa apply → ẩn hẳn thẻ, không hỏng phần còn lại.
+//
+// ponytail: ở quy mô hiện tại (vài chi nhánh/tuần) mỗi ô trong bảng là 1-3 người,
+// xu hướng theo cột chưa đọc được — phần đọc được ngay là khối "Kẹt" bên dưới.
+// Bảng bắt đầu nói được điều gì từ khoảng 30 địa chỉ mới/tuần trở lên.
+function CohortFunnelCard({ refreshToken }) {
+    const [data, setData] = useState(null)
+
+    useEffect(() => {
+        fetchAdminFunnelCohorts().then(setData).catch(() => setData(null))
+    }, [refreshToken])
+
+    if (!data) return null
+    const { weeks, stuck } = data
 
     return (
-        <div className="border-t border-border/60 mt-3 pt-3">
-            <p className="text-[10.5px] font-black uppercase tracking-wide text-text-dim mb-2">Sau đăng ký → chốt ca full lần đầu</p>
+        <div className="bg-surface border border-border/60 rounded-[20px] p-4">
+            {/* Khối "Kẹt" lên TRƯỚC bảng: đây là phần hành động được ngay (gọi ai),
+                bảng cohort là bối cảnh xu hướng — ở quy mô hiện tại thì bối cảnh
+                đứng sau. Đảo lại khi bảng đủ dày để dẫn chuyện. */}
+            <h3 className="text-[12px] font-black uppercase tracking-wide text-text-secondary mb-2">Kẹt &gt;3 ngày, chưa được cấp trial</h3>
             <div className="flex flex-col gap-2">
-                <StatRow dotClass="bg-success" label="Đã chốt ca full (trial bắt đầu)" value={activated} />
-                <StatRow dotClass="bg-text-dim" label="Trong 3 ngày đầu (chưa cần lo)" value={pending} />
-                <StatRow
-                    dotClass={stuck > 0 ? 'bg-warning' : 'bg-text-dim'}
-                    label="Kẹt >3 ngày, chưa chốt ca nào"
-                    value={stuck}
-                    onClick={stuck > 0 ? () => navigate('/admin/reconciliation') : undefined}
-                />
+                <StatRow dotClass="bg-text-dim" label="Chưa bán đơn nào" value={stuck.never_ordered} />
+                <StatRow dotClass="bg-warning" label="Có bán, chưa nhập thực thu" value={stuck.ordered_no_cash_close} />
+                <StatRow dotClass="bg-danger" label="Đã nhập thực thu, chưa được cấp trial" value={stuck.cash_closed_no_trial} />
             </div>
+
+            {weeks.length > 0 && <div className="border-t border-border/60 mt-3 pt-3">
+                <p className="text-[10.5px] font-black uppercase tracking-wide text-text-dim">Cohort theo tuần tạo chi nhánh</p>
+                {/* Đếm luỹ kế tới hôm nay: cohort tuần cuối chưa đủ thời gian đi hết phễu
+                    nên LUÔN thấp giả — nói thẳng ra đây thay vì để admin đọc nhầm là tụt. */}
+                <p className="text-[10.5px] text-text-dim mb-2">Tuần mới nhất chưa chín, đọc theo các tuần trước</p>
+                <div className="overflow-x-auto -mx-1 px-1">
+                    <table className="w-full text-[12px] tabular-nums">
+                        <thead>
+                            <tr className="text-text-dim text-[10px] font-black uppercase tracking-wide">
+                                <th className="text-left font-black pb-1.5">Tuần</th>
+                                {COHORT_COLS.map((c) => (
+                                    <th key={c.key} className="text-right font-black pb-1.5 pl-3">{c.label}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {weeks.map((w, i) => (
+                                <tr key={w.week} className={`border-t border-border/30 ${i === weeks.length - 1 ? 'text-text-dim' : 'text-text-secondary'}`}>
+                                    <td className="py-1.5 whitespace-nowrap">{new Date(w.week).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</td>
+                                    {COHORT_COLS.map((c) => (
+                                        <td key={c.key} className="py-1.5 pl-3 text-right font-black">{w[c.key]}</td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>}
         </div>
     )
 }

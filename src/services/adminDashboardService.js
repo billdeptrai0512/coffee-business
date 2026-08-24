@@ -14,3 +14,12 @@ export async function fetchAdminDashboard() {
     if (error) throw error
     return data
 }
+
+// Cohort funnel theo tuần (admin_funnel_cohorts, migration 20260824). RPC RIÊNG
+// vì cùng lý do như guest funnel ở trên: overview() body 400+ dòng, quy ước
+// CREATE OR REPLACE nguyên body. Ném lỗi để caller tự ẩn thẻ khi chưa apply.
+export async function fetchAdminFunnelCohorts() {
+    const { data, error } = await supabase.rpc('admin_funnel_cohorts')
+    if (error) throw error
+    return data
+}
