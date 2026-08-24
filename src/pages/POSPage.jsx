@@ -14,6 +14,7 @@ import { dateFullVN } from '../utils/dateVN'
 import Header from '../components/POSPage/Header'
 import MenuGrid from '../components/POSPage/MenuGrid'
 import CheckoutBar from '../components/POSPage/CheckoutBar'
+import TableModal from '../components/POSPage/TableModal'
 import Toast from '../components/POSPage/Toast'
 
 export default function POSPage() {
@@ -86,50 +87,62 @@ export default function POSPage() {
         handleLoadHistory()
     }
 
+    // Bàn ngồi trên tablet/iPad (md+): chia đôi màn hình — bên trái vẫn là POS như
+    // trên điện thoại, bên phải là lưới chọn bàn luôn hiện (TableModal inline, xem
+    // component đó) thay vì phải bấm mở modal. Không bật khi tắt Bàn ngồi hoặc trên
+    // điện thoại — layout đó giữ nguyên như cũ.
     return (
-        <div className="flex flex-col h-full max-w-lg mx-auto bg-bg">
-            <Header
-                isOnline={isOnline}
-                dayName={dayName}
-                dateOnly={dateOnly}
-                onOpenHistory={handleOpenHistory}
-                addressName={selectedAddress?.name}
-                onAddressClick={() => navigate(isGuest ? '/login' : '/addresses')}
-                recentOrders={recentOrders}
-                draftOrder={draftOrder}
-                enterKey={enterKey}
-                showOnboardingHint={showHistoryHint}
-                dineIn={dineIn}
-            />
+        <div className="flex h-full">
+            <div className={`flex flex-col h-full max-w-lg mx-auto bg-bg ${dineIn ? 'md:max-w-none md:flex-1 md:mx-0 md:border-r md:border-border/80' : ''}`}>
+                <Header
+                    isOnline={isOnline}
+                    dayName={dayName}
+                    dateOnly={dateOnly}
+                    onOpenHistory={handleOpenHistory}
+                    addressName={selectedAddress?.name}
+                    onAddressClick={() => navigate(isGuest ? '/login' : '/addresses')}
+                    recentOrders={recentOrders}
+                    draftOrder={draftOrder}
+                    enterKey={enterKey}
+                    showOnboardingHint={showHistoryHint}
+                    dineIn={dineIn}
+                />
 
-            <MenuGrid
-                products={products}
-                cart={cart}
-                activeItem={activeItem}
-                onAddItem={handleAddItem}
-                onCancelHeld={cancelHeld}
-                productExtras={productExtras}
-                onToggleExtra={handleToggleExtra}
-                enabledStickyExtraIds={enabledStickyExtraIds}
-                onToggleStickyExtra={handleToggleStickyExtra}
-                hintProductId={hintProductId}
-                hintExtraName={hintExtraName}
-                dineIn={dineIn}
-            />
+                <MenuGrid
+                    products={products}
+                    cart={cart}
+                    activeItem={activeItem}
+                    onAddItem={handleAddItem}
+                    onCancelHeld={cancelHeld}
+                    productExtras={productExtras}
+                    onToggleExtra={handleToggleExtra}
+                    enabledStickyExtraIds={enabledStickyExtraIds}
+                    onToggleStickyExtra={handleToggleStickyExtra}
+                    hintProductId={hintProductId}
+                    hintExtraName={hintExtraName}
+                    dineIn={dineIn}
+                />
+
+                {dineIn && (
+                    <CheckoutBar
+                        discountAmount={discountAmount}
+                        finalTotal={finalTotal}
+                        cart={cart}
+                        onItemDiscount={setItemDiscount}
+                        tableName={tableName}
+                        onConfirm={handleConfirm}
+                        disabled={!hasOrder}
+                    />
+                )}
+
+                <Toast toast={toast} />
+            </div>
 
             {dineIn && (
-                <CheckoutBar
-                    discountAmount={discountAmount}
-                    finalTotal={finalTotal}
-                    cart={cart}
-                    onItemDiscount={setItemDiscount}
-                    tableName={tableName}
-                    onConfirm={handleConfirm}
-                    disabled={!hasOrder}
-                />
+                <aside className="hidden md:flex flex-col h-full flex-1 bg-bg">
+                    <TableModal inline />
+                </aside>
             )}
-
-            <Toast toast={toast} />
         </div>
     )
 }

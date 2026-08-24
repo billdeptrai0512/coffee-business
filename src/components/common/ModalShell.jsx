@@ -42,5 +42,6 @@ export const CHIP = 'h-[26px] rounded-full border text-[11px] font-black upperca
 export const CHIP_IDLE = `${CHIP} bg-surface-light border-border/60 text-text-secondary`
 
 // Pill ngày/giờ mở đợt/đơn — tách riêng ngày và giờ thành 2 pill cạnh nhau (thay vì 1
-// chuỗi text) để dễ quét mắt hơn khi liệt kê nhiều đợt/đơn liên tiếp.
-export const TIME_PILL = 'rounded-full bg-surface-light border border-border/60 px-2 py-0.5 text-[11px] font-bold text-text-secondary/70 leading-none'
+// chuỗi text) để dễ quét mắt hơn khi liệt kê nhiều đợt/đơn liên tiếp. Cùng h-[26px] với
+// CHIP để pill và nút chip tròn đứng cạnh nhau (xem TableDetailModal) cao bằng nhau.
+export const TIME_PILL = 'h-[26px] inline-flex items-center rounded-full bg-surface-light border border-border/60 px-2.5 text-[11px] font-bold text-text-secondary/70 leading-none'

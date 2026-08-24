@@ -65,7 +65,10 @@ function pendingCups(rounds) {
     return rounds.filter(r => !r.servedAt).reduce((s, r) => s + r.lines.reduce((ss, l) => ss + (l.qty || 0), 0), 0)
 }
 
-export default function TableModal({ onClose }) {
+// inline = true: render as the permanent right-pane "screen" on tablet split-view
+// (POSPage) instead of a bottom-sheet Dialog — no backdrop, no close button, picking
+// a table just updates this pane (no onClose to call back to).
+export default function TableModal({ onClose, inline = false }) {
     const { tableName, setTableName, openTables, refreshTables, orderCount, showError } = useCart()
     const { selectedAddress, setTables } = useAddress()
     const { isManager, isAdmin } = useAuth()
@@ -119,7 +122,7 @@ export default function TableModal({ onClose }) {
 
     function pick(name) {
         setTableName(name)
-        onClose()
+        onClose?.()
     }
 
     async function handleOpenNew(e) {
@@ -148,14 +151,18 @@ export default function TableModal({ onClose }) {
         catch (err) { showError(err, 'Xoá bàn') }
     }
 
-    return (
-        <Dialog onClose={onClose} panelClassName="w-full max-w-md mx-4 max-h-[92dvh] flex flex-col bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden">
-            {/* Header */}
+    // Header + body + child modals shared by both the mobile Dialog and the tablet
+    // inline panel (see `inline` prop) — only the outer chrome (backdrop, and the
+    // close button which inline has no use for) differs.
+    const inner = (
+        <>
             <div className="shrink-0 flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
                 <p className="text-text font-black text-base leading-none">Chọn bàn</p>
-                <button onClick={onClose} className="p-1.5 text-text-secondary hover:text-text rounded-lg hover:bg-surface-light">
-                    <X size={16} />
-                </button>
+                {!inline && (
+                    <button onClick={onClose} className="p-1.5 text-text-secondary hover:text-text rounded-lg hover:bg-surface-light">
+                        <X size={16} />
+                    </button>
+                )}
             </div>
 
             {/* Body */}
@@ -312,6 +319,16 @@ export default function TableModal({ onClose }) {
                     onPick={() => pick('')}
                 />
             )}
+        </>
+    )
+
+    // inline: no backdrop/panel chrome — POSPage's <aside> already owns the
+    // flex/h-full/bg box, so this just hands back the shared content.
+    if (inline) return inner
+
+    return (
+        <Dialog onClose={onClose} panelClassName="w-full max-w-md mx-4 max-h-[92dvh] flex flex-col bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden">
+            {inner}
         </Dialog>
     )
 }
