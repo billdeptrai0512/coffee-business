@@ -48,8 +48,6 @@ BEGIN
         RETURN NEW;  -- chưa lưu thực thu → chưa tính là chốt ca
     END IF;
 
-    -- (Cổng kiểm kho `v_missing` đã bỏ ở đây — xem header.)
-
     -- Chống nhập bừa (1/2): "Lưu thực thu" đặt cash_closed_at kể cả khi cả 2 ô = 0
     -- (reportService.ts buildCashPayload) — người vào nghịch thử bấm lưu cho biết
     -- thì không nên bị đốt 14 ngày trial.
