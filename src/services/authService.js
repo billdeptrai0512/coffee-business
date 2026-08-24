@@ -271,7 +271,7 @@ export async function fetchProfileByAuthId(authId) {
 export async function fetchAddresses(managerId) {
     if (!supabase) return { data: [], error: null }
 
-    let query = supabase.from('addresses').select('*').order('created_at')
+    let query = supabase.from('addresses').select('*').is('deleted_at', null).order('created_at')
 
     if (managerId !== 'ALL') {
         query = query.eq('manager_id', managerId)
@@ -397,10 +397,15 @@ export async function setAddressTables(addressId, tables) {
     return data
 }
 
-// Delete an address
+// Soft-delete an address: set deleted_at instead of DELETE. 8 tables
+// (orders, shift_closings, address_subscriptions, expenses, supplier_debt...)
+// REFERENCES addresses(id) ON DELETE CASCADE — a hard delete here would have
+// permanently wiped that address's entire financial history with no undo
+// short of a full project point-in-time restore. See
+// 20260824_addresses_soft_delete.sql.
 export async function deleteAddress(id) {
     if (!supabase) throw new Error('No Supabase connection')
-    const { error } = await supabase.from('addresses').delete().eq('id', id)
+    const { error } = await supabase.from('addresses').update({ deleted_at: new Date().toISOString() }).eq('id', id)
     if (error) throw error
     return true
 }

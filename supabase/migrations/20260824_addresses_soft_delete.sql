@@ -1,0 +1,24 @@
+-- ============================================================
+-- Soft-delete cho addresses.
+--
+-- Trước đây "Xóa địa chỉ" là DELETE cứng — 8 bảng con REFERENCES
+-- addresses(id) ON DELETE CASCADE (orders, shift_closings,
+-- address_subscriptions, expenses, supplier_debt, staff_panel...), nên 1 cú
+-- xóa (dù đã gõ đúng tên xác nhận) thổi bay VĨNH VIỄN toàn bộ lịch sử tài
+-- chính của địa chỉ đó, không cách nào cứu lại ngoài restore point-in-time
+-- toàn bộ project (đè luôn dữ liệu thật của MỌI địa chỉ khác đến thời điểm
+-- restore — không khả thi với DB đang có giao dịch sống).
+--
+-- deleted_at NULL = còn sống. Có giá trị = đã xóa (ẩn khỏi app, không cascade
+-- gì cả — mọi FK, mọi lịch sử vẫn nguyên). deleteAddress() ở authService.js
+-- đổi từ DELETE sang UPDATE deleted_at = now(); fetchAddresses() lọc
+-- deleted_at IS NULL nên danh sách địa chỉ trong app không đổi hành vi.
+--
+-- Không cần policy RLS mới: "addresses_update" (20260503_fix_address_rls.sql)
+-- đã cho phép manager/admin/user_address_access UPDATE, đủ cho việc set cờ
+-- này — chỉ JS-level check (removeAddress: role manager/admin) gác quyền gọi.
+--
+-- ⚠️ PROD + DEV CHUNG 1 DB. IDEMPOTENT.
+-- ============================================================
+
+ALTER TABLE addresses ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;

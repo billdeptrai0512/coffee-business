@@ -9,10 +9,13 @@ import MonetizationToggle from '../components/AddressSelectPage/MonetizationTogg
 
 // v3: chỉ còn 3 loại activity actionable (payment/review/rating) — xem
 // 20260815_admin_dashboard_overview_v3.sql, đã bỏ new_branch/referral/new_account/new_staff.
+// v7: +deletion — "Xóa địa chỉ" giờ soft-delete, không còn biến mất im lặng
+// (xem 20260824_admin_dashboard_overview_v7.sql).
 const ACTIVITY_ICON = {
     payment: { bg: 'bg-success-soft', color: 'text-success', symbol: '₫' },
     review: { bg: 'bg-danger-soft', color: 'text-danger', symbol: '!' },
     rating: { bg: 'bg-warning-soft', color: 'text-warning', symbol: '★' },
+    deletion: { bg: 'bg-danger-soft', color: 'text-danger', symbol: '🗑' },
 }
 
 // Bước trong guide onboarding tầm giây (bấm tạo đơn, mở nhật ký...) — làm tròn
