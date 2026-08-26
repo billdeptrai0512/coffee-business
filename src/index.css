@@ -1,6 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
+/* Bàn ngồi chia đôi màn hình (POSPage): tablet/foldable thật, không phải phone
+   xoay ngang. md:768px một mình rớt tablet nhỏ (iPad mini 744px, tablet Android
+   7-8" 700-760px, Samsung Z Fold mở ra ~673-717px) — width>=650 chỉ tính khi
+   đang portrait (dáng cầm dọc); chưa phone nào (kể cả to nhất) đạt portrait
+   width quá ~500px nên 650 vẫn an toàn. Từ 768px trở lên coi là tablet dù
+   hướng nào (phone landscape rộng vậy là rủi ro sẵn có từ trước, không mới). */
+@custom-variant dine-split (@media (min-width: 768px), @media (min-width: 650px) and (orientation: portrait));
+
 @theme {
   /* KOPOS navy palette — bản UI: giữ hue brand (#01324c) nhưng tối + giảm bão hòa
      để card/chữ/primary nổi lên; màu brand gốc chỉ dùng cho logo & accent. */

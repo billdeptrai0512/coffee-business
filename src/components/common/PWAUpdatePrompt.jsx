@@ -10,10 +10,14 @@ export default function PWAUpdatePrompt() {
         onRegisteredSW(_swUrl, r) {
             // Check for updates every 30 minutes
             if (r) {
-                setInterval(() => {
-                    // ponytail: nuốt lỗi mạng lúc check update, tránh unhandled rejection bắn noise lên Sentry
-                    r.update().catch(() => {})
-                }, 30 * 60 * 1000)
+                const check = () => r.update().catch(() => {}) // ponytail: nuốt lỗi mạng, tránh unhandled rejection bắn noise lên Sentry
+                setInterval(check, 30 * 60 * 1000)
+                // setInterval bị iOS Safari treo khi PWA standalone chạy nền — app đóng
+                // lâu rồi mở lại (không phải cold-start) sẽ không bao giờ chạm interval.
+                // Bù bằng cách check lại mỗi lần app quay lại foreground.
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible') check()
+                })
             }
         },
         onRegisterError(error) {

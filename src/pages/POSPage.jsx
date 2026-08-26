@@ -87,13 +87,13 @@ export default function POSPage() {
         handleLoadHistory()
     }
 
-    // Bàn ngồi trên tablet/iPad (md+): chia đôi màn hình — bên trái vẫn là POS như
-    // trên điện thoại, bên phải là lưới chọn bàn luôn hiện (TableModal inline, xem
-    // component đó) thay vì phải bấm mở modal. Không bật khi tắt Bàn ngồi hoặc trên
-    // điện thoại — layout đó giữ nguyên như cũ.
+    // Bàn ngồi trên tablet/foldable (biến thể dine-split, xem index.css): chia đôi
+    // màn hình — bên trái vẫn là POS như trên điện thoại, bên phải là lưới chọn bàn
+    // luôn hiện (TableModal inline, xem component đó) thay vì phải bấm mở modal.
+    // Không bật khi tắt Bàn ngồi hoặc trên điện thoại — layout đó giữ nguyên như cũ.
     return (
         <div className="flex h-full">
-            <div className={`flex flex-col h-full max-w-lg mx-auto bg-bg ${dineIn ? 'md:max-w-none md:flex-1 md:mx-0 md:border-r md:border-border/80' : ''}`}>
+            <div className={`flex flex-col h-full max-w-lg mx-auto bg-bg ${dineIn ? 'dine-split:max-w-none dine-split:flex-1 dine-split:mx-0 dine-split:border-r dine-split:border-border/80' : ''}`}>
                 <Header
                     isOnline={isOnline}
                     dayName={dayName}
@@ -139,7 +139,7 @@ export default function POSPage() {
             </div>
 
             {dineIn && (
-                <aside className="hidden md:flex flex-col h-full flex-1 bg-bg">
+                <aside className="hidden dine-split:flex flex-col h-full flex-1 bg-bg">
                     <TableModal inline />
                 </aside>
             )}
