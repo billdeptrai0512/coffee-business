@@ -83,14 +83,6 @@ function RequireAddress() {
   return <Outlet />
 }
 
-// Manager-only route guard
-function ManagerOnly() {
-  const { isManager, isAdmin, loading } = useAuth()
-  if (loading) return <PageLoading />
-  if (!isManager && !isAdmin) return <Navigate to="/pos" replace />
-  return <Outlet />
-}
-
 // Mounts the "Bắt đầu bán hàng" onboarding guide once for every page inside
 // RequireAddress/ProductProvider, instead of each page wiring it in individually.
 // Pages can still hide it via useOnboardingVisibility() when they have their

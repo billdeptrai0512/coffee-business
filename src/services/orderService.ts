@@ -1,8 +1,11 @@
 // Orders + per-day stats. Other domains live in sibling service files:
-//   - productService     (products, extras, extra_ingredients)
-//   - expenseService     (expenses, fixed_costs)
-//   - ingredientService  (recipes, ingredient_costs, stocks, restock, key sync)
-//   - reportService      (shift_closings, daily/range reports, history)
+//   - productService          (products, extras, extra_ingredients)
+//   - expenseService          (expenses, fixed_costs)
+//   - recipeService           (recipes)
+//   - ingredientCostService   (ingredient_costs CRUD)
+//   - ingredientStockService  (warehouse/counter stock reads)
+//   - restockService          (restock/adjustment mutations, key sync)
+//   - reportService           (shift_closings, daily/range reports, history)
 //
 // Existing call sites still import everything from `services/orderService` —
 // the barrel re-exports at the bottom keep that working. Prefer the focused
@@ -565,5 +568,8 @@ export async function moveTableRounds(addressId: UUID, orderIds: UUID[], targetT
 // New code should prefer the focused service files directly.
 export * from './productService'
 export * from './expenseService'
-export * from './ingredientService'
+export * from './recipeService'
+export * from './ingredientCostService'
+export * from './ingredientStockService'
+export * from './restockService'
 export * from './reportService'

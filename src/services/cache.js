@@ -11,7 +11,7 @@
 //   }
 //   export function invalidateX(addressId) { cache.invalidate(['x', addressId]) }
 
-export function createCache(ttlMs) {
+function createCache(ttlMs) {
     // Map<string, { data, t }>
     const store = new Map()
 

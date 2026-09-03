@@ -29,7 +29,7 @@ Mỗi file có **header** ghi: test cái gì + file nguồn. Từng case đọc 
 | | missingCupRepeatHistory | nghi vấn bán thiếu — đếm ngày lặp lại | `utils/inventory.js` |
 | **inventory** | inventory | tiêu hao & giá trị hao hụt | `utils/inventory.js` |
 | | inventoryRecipeCost | giá vốn từ công thức + extras | `utils/inventory.js` |
-| | ingredientService | guest ingredient service, parity đổi tên key | `services/ingredientService.js` |
+| | ingredientService | guest ingredient service, parity đổi tên key | `services/ingredientStockService.ts`, `services/restockService.ts` |
 | | ingredientKeySync | phát hiện lệch key nguyên liệu | `utils/ingredientKeySync.js` |
 | **menu** | menuGridLayout | bố cục lưới menu | `utils/menuGridLayout.js` |
 | | menuSequence | thứ tự MENU_SEQUENCE | `utils/menuSequence.js` |

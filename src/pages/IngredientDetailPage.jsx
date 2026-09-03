@@ -104,7 +104,7 @@ export default function IngredientDetailPage() {
     const packSize = config.pack_size ?? null
     const packUnit = config.pack_unit ?? null
     // `??` so an explicit 0 round-trips faithfully (DB column NULL stays as null;
-    // a stored 0 stays as 0). See ingredientService.upsertIngredientCost for the
+    // a stored 0 stays as 0). See ingredientCostService.upsertIngredientCost for the
     // matching write-side rule.
     const minStock = config.min_stock ?? null
     // Khối lượng bì của hộp/chai đựng tại quầy — null/0 = không có bì.

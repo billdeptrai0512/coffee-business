@@ -191,23 +191,7 @@ export async function mergeShiftClosingInventory(addressId: UUID, patches: Row[]
 }
 
 // get_daily_report_context/get_report_by_date đã trả cash_closed_at thẳng trong shift_closing
-// (migration 20260818_report_rpc_cash_closed_at.sql). Trước đó 2 RPC liệt kê cột tường minh
-// nhưng thiếu cột này, phải bù bằng 1 PK lookup riêng — giữ lại làm phòng thủ cho tới khi
-// migration được apply (khoá 'cash_closed_at' in ... chứ không chỉ != null, vì giá trị thật
-// có thể là null khi ca chưa chốt tiền). Phòng thủ thêm: nếu cột chưa migrate ở TẦNG BẢNG
-// (42703) thì coi như null (chưa chốt → mọi khoản là trước chốt).
-async function attachCashClosedAt(data: Row) {
-    if (data?.shift_closing && 'cash_closed_at' in data.shift_closing) return data
-    const id = data?.shift_closing?.id
-    if (!id || !supabase) return data
-    const { data: row, error } = await supabase
-        .from('shift_closings')
-        .select('cash_closed_at')
-        .eq('id', id)
-        .single()
-    if (!error && row) data.shift_closing.cash_closed_at = row.cash_closed_at || null
-    return data
-}
+// (migration 20260818_report_rpc_cash_closed_at.sql) — không cần bù thêm PK lookup riêng nữa.
 
 // Fetch today's shift closing for an address (latest one)
 export async function fetchTodayShiftClosing(addressId: UUID) {
@@ -217,7 +201,7 @@ export async function fetchTodayShiftClosing(addressId: UUID) {
 
     // address_id IS NULL (Mẫu mặc định) — `.eq()` never matches NULL rows in Postgres.
     let q = supabase.from('shift_closings')
-        .select('id, closed_at, address_id, inventory_report, actual_cash, actual_transfer, system_total_revenue')
+        .select('id, closed_at, address_id, inventory_report, actual_cash, actual_transfer, system_total_revenue, cash_closed_at')
     q = addressId ? q.eq('address_id', addressId) : q.is('address_id', null)
     const { data, error } = await q
         .gte('closed_at', startOfDay.toISOString())
@@ -232,26 +216,13 @@ export async function fetchTodayShiftClosing(addressId: UUID) {
 }
 
 // Đã "chốt ca tiền thực thu" hôm nay chưa? Dùng để default phân loại tiền mặt khi nhập
-// kho (chưa chốt → 'in_shift', đã chốt → 'post_close'). Phòng thủ: cột chưa migrate
-// hoặc lỗi → coi như CHƯA chốt (false) → mặc định 'in_shift'.
+// kho (chưa chốt → 'in_shift', đã chốt → 'post_close'). Cùng hàng shift_closings và bộ
+// filter với fetchTodayShiftClosing ở trên — tái dùng nó thay vì lặp lại query.
+// Phòng thủ: cột chưa migrate hoặc lỗi → coi như CHƯA chốt (false) → mặc định 'in_shift'.
 export async function fetchCashClosedToday(addressId: UUID) {
     if (!addressId) return false
-    if (localRepo.isGuest()) {
-        const sc = localRepo.fetchLocalShiftClosing(addressId, new Date().toISOString())
-        return !!sc?.cash_closed_at
-    }
-    if (!supabase) return false
-    const startOfDay = startOfDayVN()
-    const { data, error } = await supabase
-        .from('shift_closings')
-        .select('cash_closed_at')
-        .eq('address_id', addressId)
-        .gte('closed_at', startOfDay.toISOString())
-        .order('closed_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    if (error || !data) return false
-    return !!data.cash_closed_at
+    const sc = await fetchTodayShiftClosing(addressId)
+    return !!sc?.cash_closed_at
 }
 
 // Fetch the most recent shift closing BEFORE today (for opening stock)
@@ -384,7 +355,7 @@ export async function fetchDailyReportContext(addressId: UUID) {
         if (!supabase) return {}
         const { data, error } = await supabase.rpc('get_daily_report_context', { p_address_id: addressId })
         if (error) throw error
-        return await attachCashClosedAt(data || {})
+        return data || {}
     })
 }
 
@@ -415,7 +386,7 @@ export async function fetchReportByDate(addressId: UUID, dateStr: string) {
         if (!supabase) return {}
         const { data, error } = await supabase.rpc('get_report_by_date', { p_address_id: addressId, p_date: dateStr })
         if (error) throw error
-        return await attachCashClosedAt(data || {})
+        return data || {}
     })
 }
 
