@@ -1,10 +1,13 @@
 import { useRef, useState } from 'react'
-import { ArrowLeft, Trash2, Check, Printer, ArrowRightLeft } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
+import { ArrowLeft, Trash2, Check, Printer, ArrowRightLeft, Loader } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
 import { useHistory } from '../../contexts/HistoryContext'
 import { useProducts } from '../../contexts/ProductContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
+import { useAddress } from '../../contexts/AddressContext'
 import { formatVND, discountToPercent } from '../../utils'
+import { printBillNative } from '../../lib/escposBitmap'
 import { timeStringVN, openedLabelVN, dateShortVN, isSameDayVN } from '../../utils/dateVN'
 import { priceLineFor } from '../../utils/billLines'
 import { Dialog, MODAL_PANEL, CHIP, CHIP_IDLE, TIME_PILL } from '../common/ModalShell'
@@ -23,15 +26,20 @@ import TableTargetPicker from './TableTargetPicker'
 
 export default function TableDetailModal({ table, tableNames = [], onClose, onPick }) {
     const confirm = useConfirm()
-    const { handleCloseTable, refreshTables, reopenRoundIntoCart, toggleServed, orderCount } = useCart()
+    const { handleCloseTable, refreshTables, reopenRoundIntoCart, toggleServed, orderCount, showError } = useCart()
     const { handleDeleteOrder } = useHistory()
     const { products, productExtras } = useProducts()
+    const { selectedAddress } = useAddress()
     const billRef = useRef(null)
     // Gộp bàn (chuyển hết đợt) và tách bàn (chuyển một đợt) dùng chung một màn hình
     // chọn bàn đích (TableTargetPicker) — orderIds là thứ duy nhất khác nhau giữa hai thao
     // tác. moving=null là màn bình thường; có giá trị là màn "chọn bàn đích" thay chỗ danh
     // sách đợt.
     const [moving, setMoving] = useState(null) // { orderIds: string[], label: string } | null
+    // In native (html2canvas + gửi mạng) mất vài giây thật, không tức thì như
+    // window.print() — thiếu cờ này thì bấm 2 lần liên tiếp trong lúc đang xử lý sẽ in/
+    // tính tiền 2 lần, và người dùng không biết bấm có ăn hay chưa.
+    const [billing, setBilling] = useState(false)
 
     const openedLabel = openedLabelVN
     const linesLabel = (lines) => lines.map(l => `${l.qty} ${l.name}`).join(', ')
@@ -97,29 +105,62 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
         await handleDeleteOrder(round.id)
     }
 
-    // In = mở hộp in của trình duyệt/hệ điều hành, CSS @media print (index.css) lo phần
-    // chỉ hiện #print-bill. Bill dựng sẵn trong DOM (PrintBill) nên không có bước render
-    // lại nào giữa cú bấm và lệnh in.
-    function handlePrint() {
-        billRef.current?.print()
+    // App native (Capacitor) + đã cấu hình IP máy in quầy: in bitmap thẳng qua mạng,
+    // không dialog (xem setPrinters ở AddressContext, escposBitmap.js). Web hoặc chưa
+    // cấu hình: mở hộp in của trình duyệt/hệ điều hành như cũ, CSS @media print
+    // (index.css) lo phần chỉ hiện #print-bill — bill dựng sẵn trong DOM (PrintBill)
+    // nên không có bước render lại nào giữa cú bấm và lệnh in.
+    async function handlePrint() {
+        if (Capacitor.isNativePlatform() && selectedAddress?.counter_printer_ip) {
+            try {
+                await printBillNative(billRef, selectedAddress.counter_printer_ip)
+            } catch (e) {
+                // Trước đây chỉ console.error — người bấm Tính tiền không thấy gì cả khi
+                // máy in mất kết nối (IP đổi, mất mạng...), tưởng app đứng im. Bàn vẫn
+                // đóng bình thường bên dưới (tiền đã tính, in chỉ là giấy tiện cho khách)
+                // nhưng phải báo rõ để nhân viên biết mà in lại tay.
+                showError(e, 'In hoá đơn')
+            }
+            return
+        }
+        await new Promise((resolve) => {
+            const done = () => { window.removeEventListener('afterprint', done); resolve() }
+            window.addEventListener('afterprint', done)
+            billRef.current?.print()
+        })
     }
 
     async function handleBill() {
-        // Máy khác có thể vừa gửi thêm một đợt sau lần fetch gần nhất. Nhân viên thu
-        // tiền theo đúng con số trong hộp này nên lấy lại số mới nhất ngay trước khi hỏi.
-        const fresh = (await refreshTables()).find(x => x.name === table.name) || table
-        const pending = fresh.rounds.filter(r => !r.servedAt).length
-        const ok = await confirm({
-            title: `Tính tiền ${fresh.name}?`,
-            detail: `${linesLabel(fresh.lines)} — ${formatVND(fresh.total)} · ${fresh.rounds.length} đợt từ ${openedLabel(fresh.openedAt)}`
-                // Thu tiền xong bàn biến mất khỏi lưới, đợt chưa ra món cũng biến mất
-                // theo — cảnh báo ở đây là chỗ cuối cùng còn kịp.
-                + (pending ? `\n⚠ Còn ${pending} đợt chưa ra món.` : ''),
-            confirmLabel: 'Tính tiền',
-        })
-        if (!ok) return
-        handleCloseTable(fresh)
-        onClose()
+        if (billing) return
+        setBilling(true)
+        try {
+            // Máy khác có thể vừa gửi thêm một đợt sau lần fetch gần nhất. Nhân viên thu
+            // tiền theo đúng con số trong hộp này nên lấy lại số mới nhất ngay trước khi hỏi.
+            const fresh = (await refreshTables()).find(x => x.name === table.name) || table
+            const pending = fresh.rounds.filter(r => !r.servedAt).length
+            // Chỉ hỏi xác nhận khi còn đợt chưa ra món — đây là trường hợp DUY NHẤT còn kịp
+            // cảnh báo trước khi bàn (và đợt chưa ra món) biến mất khỏi lưới. Đã ra hết món
+            // rồi thì hỏi thêm chỉ là 1 tap thừa, tính tiền + in thẳng luôn.
+            if (pending > 0) {
+                const ok = await confirm({
+                    title: `Tính tiền ${fresh.name}?`,
+                    detail: `${linesLabel(fresh.lines)} — ${formatVND(fresh.total)} · ${fresh.rounds.length} đợt từ ${openedLabel(fresh.openedAt)}\n⚠ Còn ${pending} đợt chưa ra món.`,
+                    confirmLabel: 'Tính tiền',
+                })
+                if (!ok) return
+            }
+            // In TRƯỚC khi đóng bàn: TableModal render TableDetailModal theo detailTable
+            // (tính lại từ openTables mỗi render, xem comment ở TableModal) — đóng bàn xong
+            // là table biến mất khỏi openTables, modal (và #print-bill bên trong) bị THÁO
+            // MOUNT ngay từ component cha, bất kể có gọi onClose() hay chưa. Đóng bàn trước
+            // rồi mới in gần như chắc chắn in ra giấy trắng (đường window.print()) — handlePrint
+            // tự đợi đúng việc cần đợi cho từng đường in (afterprint hoặc network gửi xong).
+            await handlePrint()
+            await handleCloseTable(fresh)
+            onClose()
+        } finally {
+            setBilling(false)
+        }
     }
 
     // orderIds rỗng (mọi đợt đều offline chưa có id) thì không có gì để chuyển — nút
@@ -245,9 +286,10 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
                 </button>
                 <button
                     onClick={handleBill}
-                    className="flex-1 py-2.5 rounded-[12px] bg-primary text-bg text-[12px] font-black uppercase tracking-wider hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                    disabled={billing}
+                    className="flex-1 py-2.5 rounded-[12px] bg-primary text-bg text-[12px] font-black uppercase tracking-wider hover:bg-primary/90 active:bg-primary/80 transition-colors disabled:opacity-60 disabled:pointer-events-none flex items-center justify-center gap-1.5"
                 >
-                    Tính tiền
+                    {billing ? <Loader size={14} className="animate-spin" /> : 'Tính tiền'}
                 </button>
             </div>
 

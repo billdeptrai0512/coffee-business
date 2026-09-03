@@ -13,9 +13,15 @@
     "test:watch": "vitest",
     "test:inventory": "node scripts/test-inventory-staging.mjs",
     "test:money": "node scripts/test-money-staging.mjs",
-    "check:search-path": "node scripts/check-search-path.mjs"
+    "check:search-path": "node scripts/check-search-path.mjs",
+    "cap:sync": "vite build && npx cap sync"
   },
   "dependencies": {
+    "@albgen/capacitor-escpos-plugin": "^1.0.18",
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1",
+    "@capacitor/preferences": "^8.0.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
@@ -23,6 +29,7 @@
     "@sentry/react": "^10.63.0",
     "@supabase/supabase-js": "^2.100.1",
     "@vercel/analytics": "^2.0.1",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^1.7.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -31,6 +38,7 @@
     "recharts": "^3.8.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.2.14",

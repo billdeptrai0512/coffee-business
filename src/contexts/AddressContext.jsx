@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext'
 import {
     fetchAddresses, createAddress as apiCreateAddress, updateAddress as apiUpdateAddress, deleteAddress as apiDeleteAddress,
     setAddressDineIn as apiSetAddressDineIn, setAddressTables as apiSetAddressTables,
+    setAddressPrinters as apiSetAddressPrinters,
     upsertSession,
     fetchWarehouseGroups, upsertWarehouseGroup as apiUpsertWarehouseGroup,
     deleteWarehouseGroup as apiDeleteWarehouseGroup, setAddressWarehouseGroup as apiSetAddressWarehouseGroup
@@ -233,6 +234,20 @@ export function AddressProvider() {
         return updatedAddr
     }, [profile, selectedAddress, isGuest])
 
+    // IP máy in ESC/POS (quầy + bếp) cho app native. Cùng guard/cách đồng bộ như
+    // setDineIn/setTables ở trên.
+    const setPrinters = useCallback(async (addressId, printers) => {
+        if (isGuest) throw new Error('Tính năng này chỉ dành cho tài khoản chính thức!')
+        if (!profile?.id || (profile.role !== 'manager' && profile.role !== 'admin')) throw new Error('Chỉ quản lý mới có thể sửa địa chỉ')
+        const updatedAddr = await apiSetAddressPrinters(addressId, printers)
+        setAddresses(prev => prev.map(a => a.id === addressId ? updatedAddr : a))
+        if (selectedAddress?.id === addressId) {
+            setSelectedAddressState(updatedAddr)
+            localStorage.setItem(STORAGE_KEYS.SELECTED_ADDRESS_OBJ, JSON.stringify(updatedAddr))
+        }
+        return updatedAddr
+    }, [profile, selectedAddress, isGuest])
+
     const removeAddress = useCallback(async (addressId) => {
         if (isGuest) throw new Error('Tính năng này chỉ dành cho tài khoản chính thức!')
         if (!profile?.id || (profile.role !== 'manager' && profile.role !== 'admin')) throw new Error('Chỉ quản lý mới có thể xóa địa chỉ')
@@ -297,6 +312,7 @@ export function AddressProvider() {
         renameAddress,
         setDineIn,
         setTables,
+        setPrinters,
         removeAddress,
         warehouseGroups,
         siblingsByAddress,
@@ -306,7 +322,7 @@ export function AddressProvider() {
         setAddressGroup,
         loading,
         fetchError
-    }), [addresses, selectedAddress, setSelectedAddress, createNewAddress, renameAddress, setDineIn, setTables, removeAddress, warehouseGroups, siblingsByAddress, createWarehouseGroup, renameWarehouseGroup, removeWarehouseGroup, setAddressGroup, loading, fetchError])
+    }), [addresses, selectedAddress, setSelectedAddress, createNewAddress, renameAddress, setDineIn, setTables, setPrinters, removeAddress, warehouseGroups, siblingsByAddress, createWarehouseGroup, renameWarehouseGroup, removeWarehouseGroup, setAddressGroup, loading, fetchError])
 
     return (
         <AddressContext.Provider value={value}>

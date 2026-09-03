@@ -23,16 +23,52 @@ const PrintBill = forwardRef(function PrintBill(
     const printCountLabelRef = useRef(null)
     const printCountRef = useRef(0)
 
+    // Cập nhật "Giờ ra"/"Ngày"/"In lần" ngay trước khi lấy bản in — dùng chung cho cả
+    // print() (web) và captureImage() (native) nên 2 đường in không lệch giờ/lần in.
+    function bumpPrintMeta() {
+        const now = new Date()
+        if (printedAtRef.current) printedAtRef.current.textContent = fullLabel(now)
+        if (printDateRef.current) printDateRef.current.textContent = dateFullVN(now)
+        printCountRef.current += 1
+        if (printCountLabelRef.current) printCountLabelRef.current.textContent = String(printCountRef.current)
+    }
+
     useImperativeHandle(ref, () => ({
         // Ghi thẳng vào DOM chứ không qua state: window.print() chạy đồng bộ, React
         // chưa kịp render lại thì hộp in đã chụp mất tờ bill với giờ/lần in cũ.
         print() {
-            const now = new Date()
-            if (printedAtRef.current) printedAtRef.current.textContent = fullLabel(now)
-            if (printDateRef.current) printDateRef.current.textContent = dateFullVN(now)
-            printCountRef.current += 1
-            if (printCountLabelRef.current) printCountLabelRef.current.textContent = String(printCountRef.current)
+            bumpPrintMeta()
             window.print()
+        },
+        // App native: chụp #print-bill bằng html2canvas thay vì window.print() — khớp
+        // 100% layout web vì dùng chung DOM. Phần tử đang `hidden` (display:none) nên
+        // phải tạm hiện lên NGOÀI màn hình (position:fixed, left âm) mới chụp được —
+        // html2canvas không đọc được phần tử display:none. Import html2canvas động vì
+        // chỉ đường native cần, không kéo vào bundle web.
+        async captureImage() {
+            bumpPrintMeta()
+            const el = document.getElementById('print-bill')
+            if (!el) return null
+            const prevClassName = el.className
+            const prevStyle = el.getAttribute('style')
+            el.className = ''
+            // color:#000 bắt buộc — chữ trong PrintBill không tự set màu, vốn ăn theo
+            // default (đen trên nền trắng khi in thật qua @media print). Chụp ở ngữ cảnh
+            // MÀN HÌNH thường (@media print không áp dụng) thì chữ kế thừa màu SÁNG từ
+            // theme tối của app → trắng trên nền trắng tôi ép, chữ vô hình dù đường viền
+            // (inline #000 riêng) vẫn thấy.
+            el.style.cssText = 'position:fixed; left:-9999px; top:0; width:300px; background:#fff; color:#000; padding:10px 12px;'
+            // Đợi 1 khung hình để trình duyệt thực sự layout/paint xong trước khi chụp —
+            // đổi style xong gọi html2canvas ngay có thể chụp trúng lúc chưa kịp vẽ.
+            await new Promise(requestAnimationFrame)
+            try {
+                const { default: html2canvas } = await import('html2canvas')
+                return await html2canvas(el, { backgroundColor: '#fff' })
+            } finally {
+                el.className = prevClassName
+                if (prevStyle) el.setAttribute('style', prevStyle)
+                else el.removeAttribute('style')
+            }
         },
     }), [])
 

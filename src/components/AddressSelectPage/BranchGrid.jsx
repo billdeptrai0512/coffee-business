@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
     Pencil, Trash2, ClipboardCopy, MoreVertical, X,
     Coffee, Loader, FileText, Package, ChevronRight, Eraser,
-    Banknote, Receipt, Wallet, Boxes, TrendingUp, ChefHat, Box, Warehouse, Armchair,
+    Banknote, Receipt, Wallet, Boxes, TrendingUp, ChefHat, Box, Warehouse, Armchair, Printer,
 } from 'lucide-react'
 import ErrorBanner from '../common/ErrorBanner'
 import Skeleton from '../common/Skeleton'
@@ -19,7 +19,7 @@ export default function BranchGrid({
     addresses, fetchError, cupsMap, revenueMap, prevCupsMap = {}, prevRevenueMap = {}, sessionsMap, subscriptionRowsMap = {}, subscriptionStatusMap = {}, subscriptionLoading, statsLoading,
     isStaff, isAdmin, error, setError,
     onSelect, onSelectReport, onSelectHistory, onSelectIngredients, onSelectRecipes,
-    onRename, onRemove, onDefaultTemplate, onSupportClick, onToggleDineIn,
+    onRename, onRemove, onDefaultTemplate, onSupportClick, onToggleDineIn, onSetPrinters,
     warehouseGroups = [], onCreateWarehouseGroup, onRenameWarehouseGroup, onRemoveWarehouseGroup, onSetAddressGroup,
 }) {
     // Which per-card sub-modal (rename/delete/backup/wipe/group) is open, and for which
@@ -31,6 +31,9 @@ export default function BranchGrid({
     const closeSubModal = () => setSubModal(null)
     const [editName, setEditName] = useState('')
     const [renaming, setRenaming] = useState(false)
+    // IP máy in ESC/POS (app native, xem escposBitmap.js) — quầy + bếp riêng theo địa chỉ.
+    const [printerForm, setPrinterForm] = useState({ counterPrinterIp: '', kitchenPrinterIp: '' })
+    const [savingPrinters, setSavingPrinters] = useState(false)
     const [deleteConfirmName, setDeleteConfirmName] = useState('')
     const [deleting, setDeleting] = useState(false)
     const [expandedActionsId, setExpandedActionsId] = useState(null) // which card has the 3-action menu open
@@ -158,6 +161,24 @@ export default function BranchGrid({
         }
     }
 
+    async function handleSavePrinters(e, addrId) {
+        e.preventDefault()
+        if (submitGuardRef.current) return
+        submitGuardRef.current = true
+        setSavingPrinters(true)
+        setError('')
+        try {
+            await onSetPrinters(addrId, printerForm)
+            closeSubModal()
+            setExpandedActionsId(null)
+        } catch (err) {
+            setError(err.message || 'Không thể lưu IP máy in')
+        } finally {
+            setSavingPrinters(false)
+            submitGuardRef.current = false
+        }
+    }
+
     return (
         <>
             <div className="grid grid-cols-1 gap-3 mb-4">
@@ -190,6 +211,7 @@ export default function BranchGrid({
                         : null
                     const sessionUsers = sessionsMap[addr.id] || []
                     const isEditing = subModal?.type === 'rename' && subModal.addressId === addr.id
+                    const isEditingPrinters = subModal?.type === 'printers' && subModal.addressId === addr.id
                     // Stale-while-revalidate: only hide stats on initial load.
                     // Once cupsMap has any value (incl. 0), keep rendering it
                     // during background refreshes (visibilitychange refetch).
@@ -446,6 +468,21 @@ export default function BranchGrid({
                                                             catch (err) { setError(err.message || 'Không thể đổi chế độ bán') }
                                                         }}
                                                     />
+                                                    {/* Chỉ dùng cho app native (Capacitor) — máy in ESC/POS qua mạng, xem
+                                                        escposBitmap.js. Web bỏ qua 2 cột này, vẫn window.print() như cũ. */}
+                                                    <ActionPill
+                                                        icon={<Printer size={16} />}
+                                                        label="Máy in"
+                                                        tone={addr.counter_printer_ip || addr.kitchen_printer_ip ? 'success' : 'primary'}
+                                                        onClick={() => {
+                                                            setSubModal({ type: 'printers', addressId: addr.id })
+                                                            setPrinterForm({
+                                                                counterPrinterIp: addr.counter_printer_ip || '',
+                                                                kitchenPrinterIp: addr.kitchen_printer_ip || '',
+                                                            })
+                                                            setError('')
+                                                        }}
+                                                    />
                                                     {isAdmin && (
                                                         <ActionPill
                                                             icon={<Eraser size={16} />}
@@ -519,6 +556,82 @@ export default function BranchGrid({
                                                     className="flex-1 py-3 rounded-[14px] bg-primary text-black font-black text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                                 >
                                                     {renaming ? <Loader size={14} className="animate-spin" /> : 'Lưu'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </Dialog>
+                            )}
+
+                            {/* Modal cấu hình IP máy in — chỉ có tác dụng trên app native (Capacitor),
+                                web vẫn window.print() bất kể có nhập gì ở đây. */}
+                            {isEditingPrinters && (
+                                <Dialog
+                                    onClose={() => { if (!savingPrinters) { closeSubModal(); setExpandedActionsId(null); setError('') } }}
+                                    panelClassName="w-full max-w-sm mx-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden"
+                                >
+                                    <form onSubmit={(e) => handleSavePrinters(e, addr.id)}>
+                                        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-8 h-8 rounded-[10px] bg-primary/10 flex items-center justify-center">
+                                                    <Printer size={15} className="text-primary" />
+                                                </div>
+                                                <p className="text-text font-black text-sm leading-none">IP máy in (app native)</p>
+                                            </div>
+                                            {!savingPrinters && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { closeSubModal(); setExpandedActionsId(null); setError('') }}
+                                                    className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
+                                                >
+                                                    <X size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="p-5 flex flex-col gap-4">
+                                            <p className="text-text-secondary text-xs font-medium -mt-1">
+                                                Để trống nếu chưa có máy in — app sẽ dùng hộp in của trình duyệt như bình thường.
+                                            </p>
+                                            <div className="flex flex-col gap-1.5">
+                                                <label className="text-text-secondary text-xs font-bold uppercase tracking-wide">Máy in quầy (Tính tiền)</label>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    placeholder="192.168.1.100"
+                                                    value={printerForm.counterPrinterIp}
+                                                    onChange={e => setPrinterForm(f => ({ ...f, counterPrinterIp: e.target.value }))}
+                                                    disabled={savingPrinters}
+                                                    className="w-full px-4 py-3 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-50"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="flex flex-col gap-1.5">
+                                                <label className="text-text-secondary text-xs font-bold uppercase tracking-wide">Máy in bếp (Tạo đơn)</label>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    placeholder="192.168.1.101"
+                                                    value={printerForm.kitchenPrinterIp}
+                                                    onChange={e => setPrinterForm(f => ({ ...f, kitchenPrinterIp: e.target.value }))}
+                                                    disabled={savingPrinters}
+                                                    className="w-full px-4 py-3 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-50"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    disabled={savingPrinters}
+                                                    onClick={() => { closeSubModal(); setError('') }}
+                                                    className="flex-1 py-3 rounded-[14px] bg-bg border border-border/60 text-text-secondary font-bold text-sm hover:bg-surface-light transition-colors disabled:opacity-50"
+                                                >
+                                                    Hủy
+                                                </button>
+                                                <button
+                                                    type="submit"
+                                                    disabled={savingPrinters}
+                                                    className="flex-1 py-3 rounded-[14px] bg-primary text-black font-black text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {savingPrinters ? <Loader size={14} className="animate-spin" /> : 'Lưu'}
                                                 </button>
                                             </div>
                                         </div>

@@ -397,6 +397,20 @@ export async function setAddressTables(addressId, tables) {
     return data
 }
 
+// IP máy in ESC/POS (quầy + bếp) — app native (Capacitor) in bitmap thẳng qua mạng
+// bằng IP này thay vì window.print(). NULL = chưa cấu hình, fallback về window.print().
+export async function setAddressPrinters(addressId, { counterPrinterIp, kitchenPrinterIp }) {
+    if (!supabase) throw new Error('No Supabase connection')
+    const { data, error } = await supabase
+        .from('addresses')
+        .update({ counter_printer_ip: counterPrinterIp || null, kitchen_printer_ip: kitchenPrinterIp || null })
+        .eq('id', addressId)
+        .select()
+        .single()
+    if (error) throw error
+    return data
+}
+
 // Soft-delete an address: set deleted_at instead of DELETE. 8 tables
 // (orders, shift_closings, address_subscriptions, expenses, supplier_debt...)
 // REFERENCES addresses(id) ON DELETE CASCADE — a hard delete here would have

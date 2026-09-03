@@ -2,9 +2,14 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { Analytics } from '@vercel/analytics/react'
+import { Capacitor } from '@capacitor/core'
 import App from './App.jsx'
 import PWAUpdatePrompt from './components/common/PWAUpdatePrompt.jsx'
 import PWAInstallPrompt from './components/common/PWAInstallPrompt.jsx'
+
+// App native (Capacitor) không cần service worker/banner cài PWA/Analytics web —
+// 3 thứ này chỉ có ý nghĩa khi chạy trong trình duyệt.
+const isNative = Capacitor.isNativePlatform()
 
 // DSN không phải secret (nằm trong bundle client). Chỉ bật ở production để dev/tunnel
 // không bắn lỗi giả lên dashboard. tracesSampleRate=0 → chỉ theo dõi lỗi, không tốn
@@ -36,9 +41,12 @@ createRoot(document.getElementById('root')).render(
       {/* Trong Router vì banner chỉ được phép hiện ở /login (xem PWAInstallPrompt) —
           nhưng vẫn mount toàn cục để không bỏ lỡ event beforeinstallprompt, thứ chỉ
           bắn 1 lần ngay sau khi tải trang. */}
-      <PWAInstallPrompt />
+      {!isNative && <PWAInstallPrompt />}
     </BrowserRouter>
-    <PWAUpdatePrompt />
-    <Analytics />
+    {/* Not rendered at all (not just hidden) khi native — useRegisterSW bên trong
+        PWAUpdatePrompt tự đăng ký service worker ngay lúc component được gọi, nên
+        early-return bên trong nó vẫn không tránh được side effect này. */}
+    {!isNative && <PWAUpdatePrompt />}
+    {!isNative && <Analytics />}
   </StrictMode>,
 )
