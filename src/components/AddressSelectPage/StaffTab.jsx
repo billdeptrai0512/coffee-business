@@ -6,6 +6,7 @@ import Skeleton from '../common/Skeleton'
 import { BottomSheet } from '../common/ModalShell'
 import { useAuth } from '../../contexts/AuthContext'
 import { capitalizeWords } from '../../utils'
+import { dateFullVN } from '../../utils/dateVN'
 import { fetchStaffRevokedAddresses, fetchTeamRevokedAddresses, fetchStaffLastLogins, setStaffAddressAccess, setStaffPassword } from '../../services/authService'
 
 // "Đăng nhập gần nhất: 5 phút trước" / "... 3 giờ trước" / "... 2 ngày trước" / ngày cụ thể nếu đã lâu.
@@ -16,7 +17,7 @@ function formatLastLogin(iso) {
         : minutes < 60 ? `${minutes} phút trước`
         : minutes < 1440 ? `${Math.floor(minutes / 60)} giờ trước`
         : minutes < 43200 ? `${Math.floor(minutes / 1440)} ngày trước`
-        : new Date(iso).toLocaleDateString('vi-VN')
+        : dateFullVN(new Date(iso))
     return `Truy cập lần cuối: ${rel}`
 }
 

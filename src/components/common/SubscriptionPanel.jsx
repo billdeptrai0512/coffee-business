@@ -8,6 +8,7 @@ import { usePaymentPoll } from '../../hooks/usePaymentPoll'
 import { formatVND } from '../../utils'
 import { PLAN, ALL_TIER, BANK_INFO, TRIAL_DAYS } from '../../constants/monetization'
 import { computeSubscriptionStatus } from '../../utils/subscriptionStatus'
+import { dateFullVN } from '../../utils/dateVN'
 
 // Gradient vàng thương hiệu (đồng bộ badge "developed by").
 const GOLD = 'linear-gradient(135deg, #f8c577, #f59e0b, #d4882f, #b8732a)'
@@ -116,8 +117,6 @@ export default function SubscriptionPanel({ preselectAddressId, onDone }) {
         }
         return addMonths(from, PLAN.months)
     }
-    const fmtDate = (d) => d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
-
     // ── Nội dung CK: 'SP' + reference của payment_intent (webhook SePay đối chiếu) ─
     // Tạo intent khi đổi tập chi nhánh / số tiền → reference cố định cho lần CK này.
     const selectedKey = [...selectedAddressIds].sort().join(',')
@@ -240,7 +239,7 @@ export default function SubscriptionPanel({ preselectAddressId, onDone }) {
                     <div key={id} className="rounded-[18px] border border-border/60 bg-surface px-3.5 py-3 flex flex-col gap-2">
                         <CopyRow label="Địa chỉ" value={addresses.find(a => a.id === id)?.name || '—'} />
                         <CopyRow label="Thời hạn" value={isTrialMock ? `${TRIAL_DAYS} ngày` : PLAN.periodLabel} />
-                        <CopyRow label="Sử dụng đến" value={fmtDate(newExpiryFor(id))} />
+                        <CopyRow label="Sử dụng đến" value={dateFullVN(newExpiryFor(id))} />
                     </div>
                 ))}
 
@@ -322,7 +321,7 @@ export default function SubscriptionPanel({ preselectAddressId, onDone }) {
                         <div key={id} className="rounded-[18px] border border-border/60 bg-surface px-3.5 py-3 flex flex-col gap-2">
                             <CopyRow label="Địa chỉ" value={addresses.find(a => a.id === id)?.name || '—'} />
                             <CopyRow label="Thời hạn" value={PLAN.periodLabel} />
-                            <CopyRow label="Sử dụng đến" value={accessLoaded ? fmtDate(newExpiryFor(id)) : '…'} />
+                            <CopyRow label="Sử dụng đến" value={accessLoaded ? dateFullVN(newExpiryFor(id)) : '…'} />
                         </div>
                     ))
                 ) : (

@@ -2,7 +2,7 @@
 
 > **Trạng thái:** đã build đủ — RPC `edit_ingredient_restock` (migration `20260616_edit_ingredient_restock.sql`,
 > vá cascade backdate ở `20260617_fix_backdate_cascade.sql`) + `editIngredientRestock` trong
-> `ingredientService.ts` + `RestockModal` mode `edit` + nút bút chì trong `IngredientHistoryTab`.
+> `restockService.ts` + `RestockModal` mode `edit` + nút bút chì trong `IngredientHistoryTab`.
 > Giữ nguyên spec gốc bên dưới làm tài liệu tham khảo thiết kế.
 >
 > **Đọc kỹ trước khi code.** Đây là codebase THẬT đang chạy production, KHÔNG phải sandbox.
@@ -62,7 +62,7 @@ p_cash_phase TEXT, p_created_at TIMESTAMPTZ, p_staff_name TEXT)` — `RETURNS JS
 7. `REVOKE ... FROM PUBLIC, anon; GRANT ... TO authenticated;` (signature mới — bắt buộc theo CLAUDE.md).
 8. Idempotent / chạy lại an toàn; bọc `BEGIN; ... COMMIT;`.
 
-## Service layer — `src/services/ingredientService.js`
+## Service layer — `src/services/restockService.ts`
 Thêm `editIngredientRestock(addressId, expenseId, opts)` mirror `processIngredientRestock`:
 - Online: `supabase.rpc('edit_ingredient_restock', {...})`, có **retry bỏ `p_cash_phase`** nếu
   `PGRST202`/`cash_phase` (RPC chưa migrate) — y như processIngredientRestock đã làm.
@@ -149,7 +149,7 @@ Thêm `editIngredientRestock(addressId, expenseId, opts)` mirror `processIngredi
 
 ## Files đụng tới
 - `supabase/migrations/<new>_edit_ingredient_restock.sql` (mới) + mirror vào `supabase/schema.sql` nếu cần.
-- `src/services/ingredientService.js`, `src/services/orderService.js` (re-export).
+- `src/services/restockService.ts`, `src/services/orderService.ts` (re-export).
 - `src/components/IngredientManagementPage/RestockModal.jsx`
 - `src/components/IngredientManagementPage/IngredientHistoryTab.jsx`
 - `src/pages/IngredientDetailPage.jsx`

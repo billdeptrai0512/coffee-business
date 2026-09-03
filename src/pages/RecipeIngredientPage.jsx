@@ -10,6 +10,7 @@ import { norm, findCoffeeIngredient, nextIngredientSetupField } from '../utils/o
 import { RECIPE_TARGET_PRODUCT } from '../components/common/onboarding/steps/recipeStep'
 import {
     upsertRecipe,
+    upsertRecipes,
     upsertProductPrice,
     updateProductName,
     updateProductCountAsCup,
@@ -176,9 +177,7 @@ export default function RecipeIngredientPage() {
         if (srcExtras.length) parts.push(`${srcExtras.length} tùy chọn`)
         if (!await confirm({ title: `Chép ${parts.join(' + ')} từ "${sourceName}"?`, detail: 'Nguyên liệu trùng tên sẽ bị ghi đè lượng; tùy chọn được thêm mới.', confirmLabel: 'Chép' })) return
         await withSaving('Chép công thức', async () => {
-            for (const r of srcRows) {
-                await upsertRecipe(productId, r.ingredient, r.amount, selectedAddress?.id, r.unit)
-            }
+            await upsertRecipes(srcRows.map(r => ({ productId, ingredient: r.ingredient, amount: r.amount, addressId: selectedAddress?.id, unit: r.unit })))
             // Extras are copied as new rows (each with its own ingredient impacts).
             // Skip any whose name already exists here so copying twice / into a product that
             // already has "Lớn" doesn't create duplicate options.
@@ -229,14 +228,15 @@ export default function RecipeIngredientPage() {
         if (custom) toAdd.push(custom)
         if (toAdd.length === 0) return
         await withSaving('Thêm nguyên liệu vào công thức', async () => {
+            // Guard against resetting an ingredient that already exists: only seed amount 0
+            // when it's not yet in this recipe, and only register a cost row when it's
+            // brand-new — else "Tạo mới" typed with an existing name would zero its amount
+            // and (worse) its shared unit cost.
+            const newToRecipe = toAdd.filter(({ key }) => !prodRecipes.some(r => r.ingredient === key))
+            if (newToRecipe.length) {
+                await upsertRecipes(newToRecipe.map(({ key, unit }) => ({ productId, ingredient: key, amount: 0, addressId: selectedAddress?.id, unit })))
+            }
             for (const { key, unit, category } of toAdd) {
-                // Guard against resetting an ingredient that already exists: only seed amount 0
-                // when it's not yet in this recipe, and only register a cost row when it's
-                // brand-new — else "Tạo mới" typed with an existing name would zero its amount
-                // and (worse) its shared unit cost.
-                if (!prodRecipes.some(r => r.ingredient === key)) {
-                    await upsertRecipe(productId, key, 0, selectedAddress?.id, unit)
-                }
                 if (unit !== null && !(key in ingredientCosts)) {
                     await upsertIngredientCost(key, 0, selectedAddress?.id, unit, category ? { category } : {})
                 }

@@ -126,7 +126,7 @@ Chi tiết + unit test: `tests/inventory/` (chạy `npx vitest run tests/invento
 | Thành phần | Vị trí | Ghi chú |
 |---|---|---|
 | Tính tồn (đường nhanh) | RPC `get_ingredient_stocks_v2` | Đường chạy thật ở production. |
-| Tính tồn (fallback JS) | `src/services/ingredientService.js` → `fetchIngredientStocks` | Chỉ chạy khi RPC thiếu. Cùng công thức + carry-forward như RPC. |
+| Tính tồn (fallback JS) | `src/services/ingredientStockService.ts` → `fetchIngredientStocks` | Chỉ chạy khi RPC thiếu. Cùng công thức + carry-forward như RPC. |
 | Nhập kho + WAC | RPC `process_ingredient_restock` | Tạo expense refill, cập nhật `unit_cost`. KHÔNG đụng bảng `inventory`. |
 | Hủy phiếu | RPC `cancel_restock` | Zero-out tại chỗ (qty/amount → 0), giữ dòng + badge ĐÃ HỦY. |
 | Xóa NVL | RPC `delete_ingredient` | Dọn `ingredient_costs`/`recipes`/`extra_ingredients` + strip key khỏi snapshot. |
@@ -214,4 +214,4 @@ hợp nhất) trong khi **quầy vẫn riêng từng địa chỉ** (đếm tay 
 | 4 RPC tồn kho làm group-aware | `supabase/migrations/20260714_warehouse_groups_3_inventory_rpcs.sql` |
 | UI quản lý nhóm | `src/components/AddressSelectPage/BranchGrid.jsx` (modal "Kho tổng chung" trong menu Quản lý mỗi địa chỉ) |
 | Context | `src/contexts/AddressContext.jsx` — `warehouseGroups`, `siblingsByAddress`, `createWarehouseGroup`/`renameWarehouseGroup`/`removeWarehouseGroup`/`setAddressGroup` |
-| Sửa giá vốn thủ công | `updateIngredientUnitCost` (`src/services/ingredientService.ts`) → RPC `set_ingredient_unit_cost` (thay vì upsert thẳng, để đi qua fan-out) |
+| Sửa giá vốn thủ công | `updateIngredientUnitCost` (`src/services/ingredientCostService.ts`) → RPC `set_ingredient_unit_cost` (thay vì upsert thẳng, để đi qua fan-out) |

@@ -38,6 +38,31 @@ export async function upsertRecipe(productId: UUID, ingredient: string, amount: 
     if (error) throw error
 }
 
+// Batch upsert — same table/onConflict as upsertRecipe, one round trip for N rows.
+// Use for bulk operations (recipe copy, adding several ingredients at once) that would
+// otherwise fire one request per row.
+export async function upsertRecipes(rows: Array<{ productId: UUID, ingredient: string, amount: number, addressId?: UUID | null, unit?: string | null }>) {
+    if (rows.length === 0) return
+    if (localRepo.isGuest()) {
+        for (const r of rows) {
+            await localRepo.upsertLocalRecipe({ product_id: r.productId, ingredient: r.ingredient, amount: r.amount, address_id: r.addressId ?? null, unit: r.unit ?? null })
+        }
+        return
+    }
+    if (!supabase) throw new Error('No Supabase connection')
+
+    const payload: Row[] = rows.map(r => {
+        const row: Row = { product_id: r.productId, ingredient: r.ingredient, amount: r.amount }
+        if (r.unit) row.unit = r.unit
+        if (r.addressId) row.address_id = r.addressId
+        return row
+    })
+    const { error } = await supabase
+        .from('recipes')
+        .upsert(payload, { onConflict: 'product_id,ingredient,address_id' })
+    if (error) throw error
+}
+
 // Delete a recipe row
 export async function deleteRecipeRow(productId: UUID, ingredient: string, addressId: UUID | null = null) {
     if (localRepo.isGuest()) return localRepo.deleteLocalRecipeRow(productId, ingredient)

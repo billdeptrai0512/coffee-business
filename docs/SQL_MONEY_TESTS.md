@@ -48,7 +48,7 @@ lên production (không có staging) — mỗi lần DROP/CREATE function là m�
   10. Guest/local mode parity: cùng chuỗi thao tác trên localRepository ra cùng con số
       (case này chạy bằng vitest thuần, không cần DB).
 - [ ] **CI**: GitHub Action chạy script assert trên staging khi PR đụng `supabase/migrations/`
-  hoặc `src/services/ingredientService.js`.
+  hoặc `src/services/ingredientStockService.ts`.
 
 ## Trạng thái — ĐÃ LÀM (2026-07-04)
 
@@ -108,7 +108,7 @@ mới được đọc lại bằng mắt. Chạy `npm run test:money` trước k
 ### CI (chưa làm)
 
 GitHub Action chạy `test:inventory` + `test:money` khi PR đụng `supabase/migrations/` hoặc
-`ingredientService.js`/`orderService.ts` — cần đưa staging secret vào repo secrets.
+`ingredientStockService.ts`/`orderService.ts` — cần đưa staging secret vào repo secrets.
 
 ## Lưu ý
 

@@ -4,7 +4,7 @@ import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { fetchAdminDashboard, fetchAdminFunnelCohorts } from '../services/adminDashboardService'
 import { fetchGuestOnboardingFunnel } from '../services/onboardingFunnelService'
-import { openedLabelVN } from '../utils/dateVN'
+import { openedLabelVN, dateShortVN } from '../utils/dateVN'
 import MonetizationToggle from '../components/AddressSelectPage/MonetizationToggle'
 
 // v3: chỉ còn 3 loại activity actionable (payment/review/rating) — xem
@@ -488,7 +488,7 @@ function CohortFunnelCard({ refreshToken }) {
                         <tbody>
                             {weeks.map((w, i) => (
                                 <tr key={w.week} className={`border-t border-border/30 ${i === weeks.length - 1 ? 'text-text-dim' : 'text-text-secondary'}`}>
-                                    <td className="py-1.5 whitespace-nowrap">{new Date(w.week).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</td>
+                                    <td className="py-1.5 whitespace-nowrap">{dateShortVN(new Date(w.week))}</td>
                                     {COHORT_COLS.map((c) => (
                                         <td key={c.key} className="py-1.5 pl-3 text-right font-black">{w[c.key]}</td>
                                     ))}
