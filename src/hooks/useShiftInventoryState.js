@@ -63,14 +63,14 @@ import { useWarehouseStockSync } from './useWarehouseStockSync'
 export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, onFieldConflict, onRemoteCash, seed = {}) {
     const { seedReady = false, isDayScope = false, todayClosing: seedTodayClosing, yesterdayClosing: seedYesterdayClosing } = seed
     // ── Inputs (staff-typed) ──────────────────────────────────────────────────
-    const [openingInputs, setOpeningInputs] = useState({})
-    const [openingLocked, setOpeningLocked] = useState({})
-    const [restockInputs, setRestockInputs] = useState({})
-    const [inventoryInputs, setInventoryInputs] = useState({})
-    // "Bỏ qua" từng món "Soạn cho hôm nay" — đánh dấu "đã xem, không cần lấy" để vẫn hoàn
-    // tất ca mà không phải nhập hàng thừa. Đồng bộ qua cùng cơ chế restock (patch vào
-    // inventory_report, merge RPC, Realtime) thay vì localStorage → đa thiết bị thấy chung.
-    const [skipped, setSkipped] = useState({})
+    // One state object, not 5 separate useState — every write site below either resets/
+    // hydrates/reconciles ALL 5 maps together, or (the onXChange handlers) touches exactly
+    // one map; nothing ever needed them independent. "Bỏ qua" (skipped) từng món "Soạn cho
+    // hôm nay" — đánh dấu "đã xem, không cần lấy" để vẫn hoàn tất ca mà không phải nhập hàng
+    // thừa. Đồng bộ qua cùng cơ chế restock (patch vào inventory_report, merge RPC, Realtime)
+    // thay vì localStorage → đa thiết bị thấy chung.
+    const [inventoryState, setInventoryState] = useState({ opening: {}, openingLocked: {}, restock: {}, inventory: {}, skipped: {} })
+    const { opening: openingInputs, openingLocked, restock: restockInputs, inventory: inventoryInputs, skipped } = inventoryState
 
     // ── Derived / fetched ─────────────────────────────────────────────────────
     const { ingredientsList, isLoadingIngredients, reloadIngredients } = useIngredientCatalog(addressId, ingredientSortOrder)
@@ -113,11 +113,7 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
         if (addressId === undefined) return
         // Clear pre-existing input state so a new day starts blank if no closing exists yet.
         setExistingClosing(null)
-        setInventoryInputs({})
-        setRestockInputs({})
-        setOpeningInputs({})
-        setOpeningLocked({})
-        setSkipped({})
+        setInventoryState({ opening: {}, openingLocked: {}, restock: {}, inventory: {}, skipped: {} })
         commitBaseline({}, {}, {}, {}, {})
 
         const applyTodayClosing = (data) => {
@@ -144,11 +140,13 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
                 if (item.opening_locked) locked[item.ingredient] = true
                 if (item.skipped) skips[item.ingredient] = true
             })
-            setInventoryInputs(inputs)
-            setRestockInputs(restocks)
-            if (Object.keys(openings).length) setOpeningInputs(openings)
-            if (Object.keys(locked).length) setOpeningLocked(locked)
-            setSkipped(skips)
+            setInventoryState(prev => ({
+                opening: Object.keys(openings).length ? openings : prev.opening,
+                openingLocked: Object.keys(locked).length ? locked : prev.openingLocked,
+                restock: restocks,
+                inventory: inputs,
+                skipped: skips,
+            }))
             // Snapshot baseline = whatever just got hydrated from the existing closing.
             // Đầu kỳ: nếu phiếu KHÔNG lưu opening (vd chỉ nhập Cuối kỳ), đừng reset baseline.opening
             // về {} — reloadStocks có thể đã seed openingInputs từ hôm qua. Reset sẽ khiến
@@ -186,11 +184,11 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
             // Seed openingInputs only if today's closing hasn't set them yet.
             // When seeding kicks in, also fold the seed into baseline.opening so
             // a fresh tab doesn't read as "dirty" before any user edit.
-            setOpeningInputs(prev => {
-                if (Object.keys(prev).length > 0) return prev
+            setInventoryState(prev => {
+                if (Object.keys(prev.opening).length > 0) return prev
                 baselineRef.current = { ...baselineRef.current, opening: { ...openings } }
                 setBaselineVersion(v => v + 1)
-                return openings
+                return { ...prev, opening: openings }
             })
         })
     }, [addressId, reloadWarehouseStock])
@@ -226,7 +224,7 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
         const [rOut, rNb, rAdopted] = mergeField(restockInputsRef.current, b.restock, rRestock, strField)
         const [iOut, iNb] = mergeField(inventoryInputsRef.current, b.inventory, rInventory, strField)
         const [sOut, sNb, sAdopted] = mergeField(skippedRef.current, b.skipped, rSkipped, boolField)
-        setOpeningInputs(oOut); setOpeningLocked(lOut); setRestockInputs(rOut); setInventoryInputs(iOut); setSkipped(sOut)
+        setInventoryState({ opening: oOut, openingLocked: lOut, restock: rOut, inventory: iOut, skipped: sOut })
         baselineRef.current = { opening: oNb, openingLocked: lNb, restock: rNb, inventory: iNb, skipped: sNb }
         setBaselineVersion(v => v + 1)
         // Chỉ 2 field "Soạn" động chạm (restock/skipped) mới cần cảnh báo conflict — remote vừa
@@ -278,21 +276,24 @@ export function useShiftInventoryState(addressId, ingredientSortOrder, dateKey, 
 
     // ── Mutation handlers (plain setState; dirty is derived, autosave pushes) ─
     const onOpeningChange = useCallback((ingredient, value) => {
-        setOpeningInputs(prev => ({ ...prev, [ingredient]: value }))
+        setInventoryState(prev => ({ ...prev, opening: { ...prev.opening, [ingredient]: value } }))
     }, [])
 
     const onRestockChange = useCallback((ingredient, value) => {
-        setRestockInputs(prev => ({ ...prev, [ingredient]: value }))
+        setInventoryState(prev => ({ ...prev, restock: { ...prev.restock, [ingredient]: value } }))
     }, [])
 
     const onInventoryChange = useCallback((ingredient, value) => {
-        setInventoryInputs(prev => ({ ...prev, [ingredient]: value }))
+        setInventoryState(prev => ({ ...prev, inventory: { ...prev.inventory, [ingredient]: value } }))
     }, [])
 
     const onSkipToggle = useCallback((ingredient, val) => {
-        setSkipped(prev => {
-            if (!val) { const { [ingredient]: _drop, ...rest } = prev; return rest }
-            return { ...prev, [ingredient]: true }
+        setInventoryState(prev => {
+            if (!val) {
+                const { [ingredient]: _drop, ...rest } = prev.skipped
+                return { ...prev, skipped: rest }
+            }
+            return { ...prev, skipped: { ...prev.skipped, [ingredient]: true } }
         })
     }, [])
 

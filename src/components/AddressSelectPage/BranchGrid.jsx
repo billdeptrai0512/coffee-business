@@ -22,20 +22,22 @@ export default function BranchGrid({
     onRename, onRemove, onDefaultTemplate, onSupportClick, onToggleDineIn,
     warehouseGroups = [], onCreateWarehouseGroup, onRenameWarehouseGroup, onRemoveWarehouseGroup, onSetAddressGroup,
 }) {
-    const [editingAddressId, setEditingAddressId] = useState(null)
+    // Which per-card sub-modal (rename/delete/backup/wipe/group) is open, and for which
+    // address. Layers ON TOP of expandedActionsId's action-sheet (both can be open at once —
+    // "Hủy" inside a sub-modal clears just this, returning to the sheet; X/backdrop clears
+    // both). Was 5 separate `xAddressId` useState(null) flags of identical shape; merging
+    // also makes "only one sub-modal open at a time" structural instead of incidental.
+    const [subModal, setSubModal] = useState(null) // { type: 'rename'|'delete'|'backup'|'wipe'|'group', addressId } | null
+    const closeSubModal = () => setSubModal(null)
     const [editName, setEditName] = useState('')
     const [renaming, setRenaming] = useState(false)
-    const [deletingAddressId, setDeletingAddressId] = useState(null)
     const [deleteConfirmName, setDeleteConfirmName] = useState('')
     const [deleting, setDeleting] = useState(false)
-    const [backupAddressId, setBackupAddressId] = useState(null) // which card has the "Nhân bản cấu hình" modal open
     const [expandedActionsId, setExpandedActionsId] = useState(null) // which card has the 3-action menu open
     const [actionsTab, setActionsTab] = useState('shortcuts') // tab đang mở trong modal thao tác: 'shortcuts' | 'manage'
-    const [wipingAddressId, setWipingAddressId] = useState(null) // which card has the wipe-sales-data confirm modal open
     const [wipeConfirmName, setWipeConfirmName] = useState('')
     const [wiping, setWiping] = useState(false)
     const [actionsScrollFade, setActionsScrollFade] = useState(false) // còn nội dung bên dưới trong modal thao tác?
-    const [groupModalAddressId, setGroupModalAddressId] = useState(null) // which card has "Kho tổng chung" modal open
     const [groupSaving, setGroupSaving] = useState(false)
     const [groupError, setGroupError] = useState('')
     const [newGroupName, setNewGroupName] = useState('')
@@ -128,7 +130,7 @@ export default function BranchGrid({
         setError('')
         try {
             await onRemove(addr.id)
-            setDeletingAddressId(null)
+            closeSubModal()
             setExpandedActionsId(null)
         } catch (err) {
             setError(err.message || 'Không thể xóa địa chỉ')
@@ -146,7 +148,7 @@ export default function BranchGrid({
         setError('')
         try {
             await onRename(addrId, editName.trim())
-            setEditingAddressId(null)
+            closeSubModal()
             setExpandedActionsId(null)
         } catch (err) {
             setError(err.message || 'Không thể đổi tên')
@@ -187,7 +189,7 @@ export default function BranchGrid({
                         ? Math.round(((revenue - prevRevenue) / prevRevenue) * 100)
                         : null
                     const sessionUsers = sessionsMap[addr.id] || []
-                    const isEditing = editingAddressId === addr.id
+                    const isEditing = subModal?.type === 'rename' && subModal.addressId === addr.id
                     // Stale-while-revalidate: only hide stats on initial load.
                     // Once cupsMap has any value (incl. 0), keep rendering it
                     // during background refreshes (visibilitychange refetch).
@@ -383,7 +385,7 @@ export default function BranchGrid({
                                                                 label="Kho chung"
                                                                 tone="warning"
                                                                 onClick={() => {
-                                                                    setGroupModalAddressId(addr.id)
+                                                                    setSubModal({ type: 'group', addressId: addr.id })
                                                                     setGroupError('')
                                                                     setNewGroupName('')
                                                                     setConfirmDeleteGroupId(null)
@@ -419,14 +421,14 @@ export default function BranchGrid({
                                                         icon={<ClipboardCopy size={16} />}
                                                         label="Nhân bản"
                                                         tone="primary"
-                                                        onClick={() => setBackupAddressId(addr.id)}
+                                                        onClick={() => setSubModal({ type: 'backup', addressId: addr.id })}
                                                     />
                                                     <ActionPill
                                                         icon={<Pencil size={16} />}
                                                         label="Đổi tên"
                                                         tone="primary"
                                                         onClick={() => {
-                                                            setEditingAddressId(addr.id)
+                                                            setSubModal({ type: 'rename', addressId: addr.id })
                                                             setEditName(addr.name)
                                                             setError('')
                                                         }}
@@ -449,14 +451,14 @@ export default function BranchGrid({
                                                             icon={<Eraser size={16} />}
                                                             label="Reset dữ liệu"
                                                             tone="danger"
-                                                            onClick={() => { setWipingAddressId(addr.id); setWipeConfirmName(''); setError('') }}
+                                                            onClick={() => { setSubModal({ type: 'wipe', addressId: addr.id }); setWipeConfirmName(''); setError('') }}
                                                         />
                                                     )}
                                                     <ActionPill
                                                         icon={<Trash2 size={16} />}
                                                         label="Xóa địa chỉ"
                                                         tone="danger"
-                                                        onClick={() => { setDeletingAddressId(addr.id); setDeleteConfirmName(''); setError('') }}
+                                                        onClick={() => { setSubModal({ type: 'delete', addressId: addr.id }); setDeleteConfirmName(''); setError('') }}
                                                     />
                                                 </div>
                                             </div>
@@ -472,7 +474,7 @@ export default function BranchGrid({
                                 Render SAU modal thao tác trong DOM để đè lên (2 modal cùng z-50, phần tử sau luôn nổi lên trên). */}
                             {isEditing && (
                                 <Dialog
-                                    onClose={() => { if (!renaming) { setEditingAddressId(null); setExpandedActionsId(null); setError('') } }}
+                                    onClose={() => { if (!renaming) { closeSubModal(); setExpandedActionsId(null); setError('') } }}
                                     panelClassName="w-full max-w-sm mx-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden"
                                 >
                                     <form onSubmit={(e) => handleRename(e, addr.id)}>
@@ -486,7 +488,7 @@ export default function BranchGrid({
                                             {!renaming && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => { setEditingAddressId(null); setExpandedActionsId(null); setError('') }}
+                                                    onClick={() => { closeSubModal(); setExpandedActionsId(null); setError('') }}
                                                     className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
                                                 >
                                                     <X size={16} />
@@ -506,7 +508,7 @@ export default function BranchGrid({
                                                 <button
                                                     type="button"
                                                     disabled={renaming}
-                                                    onClick={() => { setEditingAddressId(null); setError('') }}
+                                                    onClick={() => { closeSubModal(); setError('') }}
                                                     className="flex-1 py-3 rounded-[14px] bg-bg border border-border/60 text-text-secondary font-bold text-sm hover:bg-surface-light transition-colors disabled:opacity-50"
                                                 >
                                                     Hủy
@@ -527,9 +529,9 @@ export default function BranchGrid({
                             {/* Modal kho tổng chung — chọn/tạo nhóm để dùng chung kho tổng với địa chỉ khác.
                                 Không phải thao tác phá dữ liệu (ON DELETE SET NULL khi xoá nhóm) nên không cần
                                 gõ lại tên xác nhận như xoá địa chỉ — chỉ 1 lần tap xác nhận cho việc xoá nhóm. */}
-                            {groupModalAddressId === addr.id && (
+                            {subModal?.type === 'group' && subModal.addressId === addr.id && (
                                 <Dialog
-                                    onClose={() => { if (!groupSaving && !creatingGroup) { setGroupModalAddressId(null); setExpandedActionsId(null); setGroupError('') } }}
+                                    onClose={() => { if (!groupSaving && !creatingGroup) { closeSubModal(); setExpandedActionsId(null); setGroupError('') } }}
                                     panelClassName="w-full max-w-sm mx-4 my-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden max-h-[calc(100dvh-2rem)] flex flex-col"
                                 >
                                         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40 shrink-0">
@@ -540,7 +542,7 @@ export default function BranchGrid({
                                                 <p className="text-text font-black text-sm leading-none">Kho tổng chung</p>
                                             </div>
                                             <button
-                                                onClick={() => { setGroupModalAddressId(null); setExpandedActionsId(null); setGroupError('') }}
+                                                onClick={() => { closeSubModal(); setExpandedActionsId(null); setGroupError('') }}
                                                 className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
                                             >
                                                 <X size={16} />
@@ -671,20 +673,20 @@ export default function BranchGrid({
                             )}
 
                             {/* Modal sao lưu — "Hủy" quay lại modal thao tác (expandedActionsId giữ nguyên), X mới thoát hẳn. */}
-                            {backupAddressId === addr.id && (
+                            {subModal?.type === 'backup' && subModal.addressId === addr.id && (
                                 <BackupModal
                                     sourceAddress={addr}
-                                    onClose={() => { setBackupAddressId(null); setExpandedActionsId(null) }}
-                                    onBack={() => setBackupAddressId(null)}
+                                    onClose={() => { closeSubModal(); setExpandedActionsId(null) }}
+                                    onBack={() => closeSubModal()}
                                 />
                             )}
 
                             {/* Modal xoá dữ liệu bán hàng (Admin) — bắt gõ lại tên địa chỉ vì đây là hard-delete
                                 không thể hoàn tác (orders/expenses/shift_closings), không đụng config/menu.
                                 "Hủy" quay lại modal thao tác, X/tap-outside mới thoát hẳn. */}
-                            {wipingAddressId === addr.id && (
+                            {subModal?.type === 'wipe' && subModal.addressId === addr.id && (
                                 <Dialog
-                                    onClose={() => { if (!wiping) { setWipingAddressId(null); setExpandedActionsId(null); setError('') } }}
+                                    onClose={() => { if (!wiping) { closeSubModal(); setExpandedActionsId(null); setError('') } }}
                                     panelClassName="w-full max-w-sm mx-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden"
                                 >
                                         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
@@ -697,7 +699,7 @@ export default function BranchGrid({
                                             {!wiping && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => { setWipingAddressId(null); setExpandedActionsId(null); setError('') }}
+                                                    onClick={() => { closeSubModal(); setExpandedActionsId(null); setError('') }}
                                                     className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
                                                 >
                                                     <X size={16} />
@@ -722,14 +724,14 @@ export default function BranchGrid({
                                             </div>
                                             {/* Modal là overlay z-50 toàn màn hình nên ErrorBanner cuối trang bị che khuất —
                                                 lỗi RPC phải hiện ngay trong modal, không thì admin không biết vì sao thất bại. */}
-                                            {wipingAddressId === addr.id && error && (
+                                            {error && (
                                                 <p className="text-danger text-xs font-medium -mt-2">{error}</p>
                                             )}
                                             <div className="flex gap-2">
                                                 <button
                                                     type="button"
                                                     disabled={wiping}
-                                                    onClick={() => { setWipingAddressId(null); setError('') }}
+                                                    onClick={() => { closeSubModal(); setError('') }}
                                                     className="flex-1 py-3 rounded-[14px] bg-bg border border-border/60 text-text-secondary font-bold text-sm hover:bg-surface-light transition-colors disabled:opacity-50"
                                                 >
                                                     Hủy
@@ -749,9 +751,9 @@ export default function BranchGrid({
 
                             {/* Modal xoá địa chỉ — bắt gõ lại tên như modal xoá dữ liệu bán hàng, vì đây cũng là hard-delete
                                 không thể hoàn tác. "Hủy" quay lại modal thao tác, X/tap-outside mới thoát hẳn. */}
-                            {deletingAddressId === addr.id && (
+                            {subModal?.type === 'delete' && subModal.addressId === addr.id && (
                                 <Dialog
-                                    onClose={() => { if (!deleting) { setDeletingAddressId(null); setExpandedActionsId(null); setError('') } }}
+                                    onClose={() => { if (!deleting) { closeSubModal(); setExpandedActionsId(null); setError('') } }}
                                     panelClassName="w-full max-w-sm mx-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden"
                                 >
                                         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
@@ -764,7 +766,7 @@ export default function BranchGrid({
                                             {!deleting && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => { setDeletingAddressId(null); setExpandedActionsId(null); setError('') }}
+                                                    onClick={() => { closeSubModal(); setExpandedActionsId(null); setError('') }}
                                                     className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
                                                 >
                                                     <X size={16} />
@@ -792,14 +794,14 @@ export default function BranchGrid({
                                                     autoFocus
                                                 />
                                             </div>
-                                            {deletingAddressId === addr.id && error && (
+                                            {error && (
                                                 <p className="text-danger text-xs font-medium -mt-2">{error}</p>
                                             )}
                                             <div className="flex gap-2">
                                                 <button
                                                     type="button"
                                                     disabled={deleting}
-                                                    onClick={() => { setDeletingAddressId(null); setError('') }}
+                                                    onClick={() => { closeSubModal(); setError('') }}
                                                     className="flex-1 py-3 rounded-[14px] bg-bg border border-border/60 text-text-secondary font-bold text-sm hover:bg-surface-light transition-colors disabled:opacity-50"
                                                 >
                                                     Hủy
