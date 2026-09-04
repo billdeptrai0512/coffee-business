@@ -1,16 +1,20 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     Pencil, Trash2, ClipboardCopy, MoreVertical, X,
-    Coffee, Loader, FileText, Package, ChevronRight, Eraser,
+    Coffee, FileText, Package, ChevronRight, Eraser,
     Banknote, Receipt, Wallet, Boxes, TrendingUp, ChefHat, Box, Warehouse, Armchair, Printer,
 } from 'lucide-react'
 import ErrorBanner from '../common/ErrorBanner'
 import Skeleton from '../common/Skeleton'
 import { formatVND } from '../../utils'
-import { supabase } from '../../lib/supabaseClient'
 import SubscriptionBadge from './SubscriptionBadge'
 import BackupModal from './BackupModal'
+import RenameAddressModal from './RenameAddressModal'
+import PrinterIpModal from './PrinterIpModal'
+import WarehouseGroupModal from './WarehouseGroupModal'
+import WipeAddressModal from './WipeAddressModal'
+import DeleteAddressModal from './DeleteAddressModal'
 import { Dialog } from '../common/ModalShell'
 
 const isManagerRole = (role) => (role === 'manager' || role === 'co-manager') ? 1 : 0
@@ -22,162 +26,29 @@ export default function BranchGrid({
     onRename, onRemove, onDefaultTemplate, onSupportClick, onToggleDineIn, onSetPrinters,
     warehouseGroups = [], onCreateWarehouseGroup, onRenameWarehouseGroup, onRemoveWarehouseGroup, onSetAddressGroup,
 }) {
-    // Which per-card sub-modal (rename/delete/backup/wipe/group) is open, and for which
+    // Which per-card sub-modal (rename/delete/backup/wipe/group/printers) is open, and for which
     // address. Layers ON TOP of expandedActionsId's action-sheet (both can be open at once —
     // "Hủy" inside a sub-modal clears just this, returning to the sheet; X/backdrop clears
-    // both). Was 5 separate `xAddressId` useState(null) flags of identical shape; merging
-    // also makes "only one sub-modal open at a time" structural instead of incidental.
-    const [subModal, setSubModal] = useState(null) // { type: 'rename'|'delete'|'backup'|'wipe'|'group', addressId } | null
+    // both). Mỗi modal tự quản lý form state riêng (xem RenameAddressModal, PrinterIpModal,
+    // WarehouseGroupModal, WipeAddressModal, DeleteAddressModal) — BranchGrid chỉ còn giữ
+    // subModal (đang mở modal nào, cho địa chỉ nào) và error dùng chung cho ErrorBanner cuối trang.
+    const [subModal, setSubModal] = useState(null) // { type: 'rename'|'printers'|'delete'|'backup'|'wipe'|'group', addressId } | null
     const closeSubModal = () => setSubModal(null)
-    const [editName, setEditName] = useState('')
-    const [renaming, setRenaming] = useState(false)
-    // IP máy in ESC/POS (app native, xem escposBitmap.js) — quầy + bếp riêng theo địa chỉ.
-    const [printerForm, setPrinterForm] = useState({ counterPrinterIp: '', kitchenPrinterIp: '' })
-    const [savingPrinters, setSavingPrinters] = useState(false)
-    const [deleteConfirmName, setDeleteConfirmName] = useState('')
-    const [deleting, setDeleting] = useState(false)
     const [expandedActionsId, setExpandedActionsId] = useState(null) // which card has the 3-action menu open
     const [actionsTab, setActionsTab] = useState('shortcuts') // tab đang mở trong modal thao tác: 'shortcuts' | 'manage'
-    const [wipeConfirmName, setWipeConfirmName] = useState('')
-    const [wiping, setWiping] = useState(false)
     const [actionsScrollFade, setActionsScrollFade] = useState(false) // còn nội dung bên dưới trong modal thao tác?
-    const [groupSaving, setGroupSaving] = useState(false)
-    const [groupError, setGroupError] = useState('')
-    const [newGroupName, setNewGroupName] = useState('')
-    const [creatingGroup, setCreatingGroup] = useState(false)
-    const [confirmDeleteGroupId, setConfirmDeleteGroupId] = useState(null)
-    const [renamingGroupId, setRenamingGroupId] = useState(null)
-    const [renameGroupName, setRenameGroupName] = useState('')
-    const submitGuardRef = useRef(false)
     const navigate = useNavigate()
-
-    async function handleJoinGroup(addr, groupId) {
-        if (groupSaving) return
-        setGroupSaving(true)
-        setGroupError('')
-        try {
-            await onSetAddressGroup(addr.id, groupId)
-        } catch (err) {
-            setGroupError(err.message || 'Không thể đổi nhóm kho tổng')
-        } finally {
-            setGroupSaving(false)
-        }
-    }
-
-    async function handleCreateAndJoinGroup(addr) {
-        const name = newGroupName.trim()
-        if (!name || creatingGroup) return
-        setCreatingGroup(true)
-        setGroupError('')
-        try {
-            const groupId = await onCreateWarehouseGroup(name)
-            await onSetAddressGroup(addr.id, groupId)
-            setNewGroupName('')
-        } catch (err) {
-            setGroupError(err.message || 'Không thể tạo nhóm')
-        } finally {
-            setCreatingGroup(false)
-        }
-    }
-
-    async function handleRenameGroup(groupId) {
-        const name = renameGroupName.trim()
-        if (!name || groupSaving) return
-        setGroupSaving(true)
-        setGroupError('')
-        try {
-            await onRenameWarehouseGroup(groupId, name)
-            setRenamingGroupId(null)
-        } catch (err) {
-            setGroupError(err.message || 'Không thể đổi tên nhóm')
-        } finally {
-            setGroupSaving(false)
-        }
-    }
-
-    async function handleDeleteGroup(groupId) {
-        setGroupSaving(true)
-        setGroupError('')
-        try {
-            await onRemoveWarehouseGroup(groupId)
-            setConfirmDeleteGroupId(null)
-        } catch (err) {
-            setGroupError(err.message || 'Không thể xoá nhóm')
-        } finally {
-            setGroupSaving(false)
-        }
-    }
 
     function checkActionsScrollFade(el) {
         if (!el) return
         setActionsScrollFade(el.scrollHeight - el.scrollTop - el.clientHeight > 4)
     }
 
-    async function handleWipeSalesData(addr) {
-        if (wipeConfirmName.trim().toUpperCase() !== addr.name.toUpperCase() || wiping) return
-        setWiping(true)
-        setError('')
-        try {
-            const { error: rpcError } = await supabase.rpc('admin_wipe_address_sales_data', { p_address_id: addr.id })
-            if (rpcError) throw rpcError
-            window.location.reload() // đơn giản nhất để làm mới cupsMap/revenueMap sau khi xoá
-        } catch (err) {
-            setError(err.message || 'Không thể xoá dữ liệu bán hàng')
-            setWiping(false)
-        }
-    }
-
-    async function handleRemoveAddress(addr) {
-        if (deleteConfirmName.trim().toUpperCase() !== addr.name.toUpperCase() || deleting) return
-        setDeleting(true)
-        setError('')
-        try {
-            await onRemove(addr.id)
-            closeSubModal()
-            setExpandedActionsId(null)
-        } catch (err) {
-            setError(err.message || 'Không thể xóa địa chỉ')
-        } finally {
-            setDeleting(false)
-        }
-    }
-
-    async function handleRename(e, addrId) {
-        e.preventDefault()
-        if (!editName.trim()) return
-        if (submitGuardRef.current) return
-        submitGuardRef.current = true
-        setRenaming(true)
-        setError('')
-        try {
-            await onRename(addrId, editName.trim())
-            closeSubModal()
-            setExpandedActionsId(null)
-        } catch (err) {
-            setError(err.message || 'Không thể đổi tên')
-        } finally {
-            setRenaming(false)
-            submitGuardRef.current = false
-        }
-    }
-
-    async function handleSavePrinters(e, addrId) {
-        e.preventDefault()
-        if (submitGuardRef.current) return
-        submitGuardRef.current = true
-        setSavingPrinters(true)
-        setError('')
-        try {
-            await onSetPrinters(addrId, printerForm)
-            closeSubModal()
-            setExpandedActionsId(null)
-        } catch (err) {
-            setError(err.message || 'Không thể lưu IP máy in')
-        } finally {
-            setSavingPrinters(false)
-            submitGuardRef.current = false
-        }
-    }
+    // Đóng chỉ sub-modal, quay lại modal thao tác phía sau (nút "Hủy" trong form).
+    const cancelSubModal = () => { closeSubModal(); setError('') }
+    // Đóng cả sub-modal lẫn modal thao tác (X/backdrop, hoặc submit thành công).
+    const closeAll = () => { closeSubModal(); setExpandedActionsId(null) }
+    const closeAllWithError = () => { closeAll(); setError('') }
 
     return (
         <>
@@ -406,12 +277,7 @@ export default function BranchGrid({
                                                                 icon={<Warehouse size={16} />}
                                                                 label="Kho chung"
                                                                 tone="warning"
-                                                                onClick={() => {
-                                                                    setSubModal({ type: 'group', addressId: addr.id })
-                                                                    setGroupError('')
-                                                                    setNewGroupName('')
-                                                                    setConfirmDeleteGroupId(null)
-                                                                }}
+                                                                onClick={() => setSubModal({ type: 'group', addressId: addr.id })}
                                                             />
                                                             <ActionPill
                                                                 icon={<ChefHat size={16} />}
@@ -449,11 +315,7 @@ export default function BranchGrid({
                                                         icon={<Pencil size={16} />}
                                                         label="Đổi tên"
                                                         tone="primary"
-                                                        onClick={() => {
-                                                            setSubModal({ type: 'rename', addressId: addr.id })
-                                                            setEditName(addr.name)
-                                                            setError('')
-                                                        }}
+                                                        onClick={() => { setSubModal({ type: 'rename', addressId: addr.id }); setError('') }}
                                                     />
                                                     {/* POS của địa chỉ này gộp nhiều ly thành 1 đơn + có nút Thanh toán
                                                         thay vì 1-chạm-1-đơn. Bật/tắt ngay, không cần modal xác nhận:
@@ -474,28 +336,21 @@ export default function BranchGrid({
                                                         icon={<Printer size={16} />}
                                                         label="Máy in"
                                                         tone={addr.counter_printer_ip || addr.kitchen_printer_ip ? 'success' : 'primary'}
-                                                        onClick={() => {
-                                                            setSubModal({ type: 'printers', addressId: addr.id })
-                                                            setPrinterForm({
-                                                                counterPrinterIp: addr.counter_printer_ip || '',
-                                                                kitchenPrinterIp: addr.kitchen_printer_ip || '',
-                                                            })
-                                                            setError('')
-                                                        }}
+                                                        onClick={() => { setSubModal({ type: 'printers', addressId: addr.id }); setError('') }}
                                                     />
                                                     {isAdmin && (
                                                         <ActionPill
                                                             icon={<Eraser size={16} />}
                                                             label="Reset dữ liệu"
                                                             tone="danger"
-                                                            onClick={() => { setSubModal({ type: 'wipe', addressId: addr.id }); setWipeConfirmName(''); setError('') }}
+                                                            onClick={() => { setSubModal({ type: 'wipe', addressId: addr.id }); setError('') }}
                                                         />
                                                     )}
                                                     <ActionPill
                                                         icon={<Trash2 size={16} />}
                                                         label="Xóa địa chỉ"
                                                         tone="danger"
-                                                        onClick={() => { setSubModal({ type: 'delete', addressId: addr.id }); setDeleteConfirmName(''); setError('') }}
+                                                        onClick={() => { setSubModal({ type: 'delete', addressId: addr.id }); setError('') }}
                                                     />
                                                 </div>
                                             </div>
@@ -507,429 +362,71 @@ export default function BranchGrid({
                                 </Dialog>
                             )}
 
-                            {/* Modal đổi tên — "Hủy" quay lại modal thao tác (expandedActionsId giữ nguyên), X/tap-outside mới thoát hẳn.
-                                Render SAU modal thao tác trong DOM để đè lên (2 modal cùng z-50, phần tử sau luôn nổi lên trên). */}
                             {isEditing && (
-                                <Dialog
-                                    onClose={() => { if (!renaming) { closeSubModal(); setExpandedActionsId(null); setError('') } }}
-                                    panelClassName="w-full max-w-sm mx-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden"
-                                >
-                                    <form onSubmit={(e) => handleRename(e, addr.id)}>
-                                        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-8 h-8 rounded-[10px] bg-primary/10 flex items-center justify-center">
-                                                    <Pencil size={15} className="text-primary" />
-                                                </div>
-                                                <p className="text-text font-black text-sm leading-none">Đổi tên địa chỉ</p>
-                                            </div>
-                                            {!renaming && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { closeSubModal(); setExpandedActionsId(null); setError('') }}
-                                                    className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
-                                                >
-                                                    <X size={16} />
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="p-5 flex flex-col gap-4">
-                                            <input
-                                                type="text"
-                                                value={editName}
-                                                onChange={e => setEditName(e.target.value)}
-                                                disabled={renaming}
-                                                className="w-full px-4 py-3 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-50"
-                                                autoFocus
-                                            />
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    disabled={renaming}
-                                                    onClick={() => { closeSubModal(); setError('') }}
-                                                    className="flex-1 py-3 rounded-[14px] bg-bg border border-border/60 text-text-secondary font-bold text-sm hover:bg-surface-light transition-colors disabled:opacity-50"
-                                                >
-                                                    Hủy
-                                                </button>
-                                                <button
-                                                    type="submit"
-                                                    disabled={renaming || !editName.trim()}
-                                                    className="flex-1 py-3 rounded-[14px] bg-primary text-black font-black text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                                >
-                                                    {renaming ? <Loader size={14} className="animate-spin" /> : 'Lưu'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </form>
-                                </Dialog>
+                                <RenameAddressModal
+                                    addr={addr}
+                                    onRename={onRename}
+                                    onCancel={cancelSubModal}
+                                    onClose={closeAllWithError}
+                                    onSuccess={closeAll}
+                                    setError={setError}
+                                />
                             )}
 
-                            {/* Modal cấu hình IP máy in — chỉ có tác dụng trên app native (Capacitor),
-                                web vẫn window.print() bất kể có nhập gì ở đây. */}
                             {isEditingPrinters && (
-                                <Dialog
-                                    onClose={() => { if (!savingPrinters) { closeSubModal(); setExpandedActionsId(null); setError('') } }}
-                                    panelClassName="w-full max-w-sm mx-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden"
-                                >
-                                    <form onSubmit={(e) => handleSavePrinters(e, addr.id)}>
-                                        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-8 h-8 rounded-[10px] bg-primary/10 flex items-center justify-center">
-                                                    <Printer size={15} className="text-primary" />
-                                                </div>
-                                                <p className="text-text font-black text-sm leading-none">IP máy in (app native)</p>
-                                            </div>
-                                            {!savingPrinters && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { closeSubModal(); setExpandedActionsId(null); setError('') }}
-                                                    className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
-                                                >
-                                                    <X size={16} />
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="p-5 flex flex-col gap-4">
-                                            <p className="text-text-secondary text-xs font-medium -mt-1">
-                                                Để trống nếu chưa có máy in — app sẽ dùng hộp in của trình duyệt như bình thường.
-                                            </p>
-                                            <div className="flex flex-col gap-1.5">
-                                                <label className="text-text-secondary text-xs font-bold uppercase tracking-wide">Máy in quầy (Tính tiền)</label>
-                                                <input
-                                                    type="text"
-                                                    inputMode="decimal"
-                                                    placeholder="192.168.1.100"
-                                                    value={printerForm.counterPrinterIp}
-                                                    onChange={e => setPrinterForm(f => ({ ...f, counterPrinterIp: e.target.value }))}
-                                                    disabled={savingPrinters}
-                                                    className="w-full px-4 py-3 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-50"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            <div className="flex flex-col gap-1.5">
-                                                <label className="text-text-secondary text-xs font-bold uppercase tracking-wide">Máy in bếp (Tạo đơn)</label>
-                                                <input
-                                                    type="text"
-                                                    inputMode="decimal"
-                                                    placeholder="192.168.1.101"
-                                                    value={printerForm.kitchenPrinterIp}
-                                                    onChange={e => setPrinterForm(f => ({ ...f, kitchenPrinterIp: e.target.value }))}
-                                                    disabled={savingPrinters}
-                                                    className="w-full px-4 py-3 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-50"
-                                                />
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    disabled={savingPrinters}
-                                                    onClick={() => { closeSubModal(); setError('') }}
-                                                    className="flex-1 py-3 rounded-[14px] bg-bg border border-border/60 text-text-secondary font-bold text-sm hover:bg-surface-light transition-colors disabled:opacity-50"
-                                                >
-                                                    Hủy
-                                                </button>
-                                                <button
-                                                    type="submit"
-                                                    disabled={savingPrinters}
-                                                    className="flex-1 py-3 rounded-[14px] bg-primary text-black font-black text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                                >
-                                                    {savingPrinters ? <Loader size={14} className="animate-spin" /> : 'Lưu'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </form>
-                                </Dialog>
+                                <PrinterIpModal
+                                    addr={addr}
+                                    onSetPrinters={onSetPrinters}
+                                    onCancel={cancelSubModal}
+                                    onClose={closeAllWithError}
+                                    onSuccess={closeAll}
+                                    setError={setError}
+                                />
                             )}
 
-                            {/* Modal kho tổng chung — chọn/tạo nhóm để dùng chung kho tổng với địa chỉ khác.
-                                Không phải thao tác phá dữ liệu (ON DELETE SET NULL khi xoá nhóm) nên không cần
-                                gõ lại tên xác nhận như xoá địa chỉ — chỉ 1 lần tap xác nhận cho việc xoá nhóm. */}
                             {subModal?.type === 'group' && subModal.addressId === addr.id && (
-                                <Dialog
-                                    onClose={() => { if (!groupSaving && !creatingGroup) { closeSubModal(); setExpandedActionsId(null); setGroupError('') } }}
-                                    panelClassName="w-full max-w-sm mx-4 my-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden max-h-[calc(100dvh-2rem)] flex flex-col"
-                                >
-                                        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40 shrink-0">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-8 h-8 rounded-[10px] bg-warning/10 flex items-center justify-center">
-                                                    <Warehouse size={15} className="text-warning" />
-                                                </div>
-                                                <p className="text-text font-black text-sm leading-none">Kho tổng chung</p>
-                                            </div>
-                                            <button
-                                                onClick={() => { closeSubModal(); setExpandedActionsId(null); setGroupError('') }}
-                                                className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
-                                            >
-                                                <X size={16} />
-                                            </button>
-                                        </div>
-                                        <div className="p-5 flex flex-col gap-2.5 overflow-y-auto">
-                                            <p className="text-text-secondary text-xs leading-relaxed mb-1">
-                                                Gộp <span className="font-bold text-text">{addr.name}</span> vào 1 nhóm để dùng chung kho tổng —
-                                                mua ở đâu cũng cộng chung, giá vốn hợp nhất, quầy vẫn riêng từng địa chỉ.{' '}
-                                                <span className="text-warning font-bold">Số tồn đổi ngay khi gộp/rời nhóm.</span>
-                                            </p>
-
-                                            <button
-                                                onClick={() => handleJoinGroup(addr, null)}
-                                                disabled={groupSaving || !addr.warehouse_group_id}
-                                                className={`flex items-center justify-between px-4 py-3 rounded-[12px] border text-sm font-bold transition-colors disabled:opacity-100 ${!addr.warehouse_group_id ? 'border-primary bg-primary/10 text-primary' : 'border-border/60 bg-bg text-text hover:bg-surface-light'}`}
-                                            >
-                                                Không gộp nhóm
-                                            </button>
-
-                                            {warehouseGroups.map(g => {
-                                                const memberCount = addresses.filter(a => a.warehouse_group_id === g.id).length
-                                                const isCurrent = addr.warehouse_group_id === g.id
-                                                const confirming = confirmDeleteGroupId === g.id
-                                                const isRenaming = renamingGroupId === g.id
-
-                                                if (isRenaming) {
-                                                    return (
-                                                        <div key={g.id} className="flex items-center gap-1.5">
-                                                            <input
-                                                                type="text"
-                                                                value={renameGroupName}
-                                                                onChange={e => setRenameGroupName(e.target.value)}
-                                                                disabled={groupSaving}
-                                                                autoFocus
-                                                                className="flex-1 min-w-0 px-4 py-2.5 rounded-[12px] bg-bg border border-primary/60 text-text text-sm font-medium focus:outline-none disabled:opacity-50"
-                                                            />
-                                                            <button
-                                                                onClick={() => handleRenameGroup(g.id)}
-                                                                disabled={groupSaving || !renameGroupName.trim()}
-                                                                className="shrink-0 px-3 py-2.5 rounded-[12px] bg-primary text-black font-black text-xs disabled:opacity-50"
-                                                            >
-                                                                Lưu
-                                                            </button>
-                                                            <button
-                                                                onClick={() => setRenamingGroupId(null)}
-                                                                disabled={groupSaving}
-                                                                className="shrink-0 p-2.5 rounded-[12px] bg-surface-light text-text-secondary"
-                                                            >
-                                                                <X size={14} />
-                                                            </button>
-                                                        </div>
-                                                    )
-                                                }
-
-                                                return (
-                                                    <div
-                                                        key={g.id}
-                                                        className={`flex items-center gap-2 px-4 py-3 rounded-[12px] border text-sm font-bold transition-colors ${isCurrent ? 'border-primary bg-primary/10 text-primary' : 'border-border/60 bg-bg text-text'}`}
-                                                    >
-                                                        <button
-                                                            onClick={() => handleJoinGroup(addr, g.id)}
-                                                            disabled={groupSaving || isCurrent}
-                                                            className="flex-1 min-w-0 text-left disabled:opacity-100"
-                                                        >
-                                                            <span className="truncate block">{g.name}</span>
-                                                            <span className="block text-[11px] font-medium text-text-secondary">{memberCount} địa chỉ</span>
-                                                        </button>
-                                                        {confirming ? (
-                                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                                <button
-                                                                    onClick={() => handleDeleteGroup(g.id)}
-                                                                    disabled={groupSaving}
-                                                                    className="px-2 py-1.5 rounded-lg bg-danger text-white text-[11px] font-black disabled:opacity-50"
-                                                                >
-                                                                    Xoá
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => setConfirmDeleteGroupId(null)}
-                                                                    className="px-2 py-1.5 rounded-lg bg-surface-light text-text-secondary text-[11px] font-bold"
-                                                                >
-                                                                    Hủy
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-0.5 shrink-0">
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); setRenamingGroupId(g.id); setRenameGroupName(g.name) }}
-                                                                    className="p-1.5 text-text-secondary hover:text-text transition-colors"
-                                                                    title="Đổi tên nhóm"
-                                                                >
-                                                                    <Pencil size={14} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteGroupId(g.id) }}
-                                                                    className="p-1.5 text-text-secondary hover:text-danger transition-colors"
-                                                                    title="Xoá nhóm"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )
-                                            })}
-
-                                            <div className="flex items-center gap-2 pt-1">
-                                                <input
-                                                    type="text"
-                                                    value={newGroupName}
-                                                    onChange={e => setNewGroupName(e.target.value)}
-                                                    placeholder="Tên nhóm mới…"
-                                                    disabled={creatingGroup}
-                                                    className="flex-1 min-w-0 px-4 py-2.5 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-50"
-                                                />
-                                                <button
-                                                    onClick={() => handleCreateAndJoinGroup(addr)}
-                                                    disabled={creatingGroup || !newGroupName.trim()}
-                                                    className="shrink-0 px-4 py-2.5 rounded-[12px] bg-primary text-black font-black text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                                                >
-                                                    {creatingGroup ? <Loader size={14} className="animate-spin" /> : 'Tạo & gộp'}
-                                                </button>
-                                            </div>
-
-                                            {groupError && <p className="text-danger text-xs font-medium">{groupError}</p>}
-                                        </div>
-                                </Dialog>
+                                <WarehouseGroupModal
+                                    addr={addr}
+                                    addresses={addresses}
+                                    warehouseGroups={warehouseGroups}
+                                    onCreateWarehouseGroup={onCreateWarehouseGroup}
+                                    onRenameWarehouseGroup={onRenameWarehouseGroup}
+                                    onRemoveWarehouseGroup={onRemoveWarehouseGroup}
+                                    onSetAddressGroup={onSetAddressGroup}
+                                    onClose={closeAll}
+                                />
                             )}
 
                             {/* Modal sao lưu — "Hủy" quay lại modal thao tác (expandedActionsId giữ nguyên), X mới thoát hẳn. */}
                             {subModal?.type === 'backup' && subModal.addressId === addr.id && (
                                 <BackupModal
                                     sourceAddress={addr}
-                                    onClose={() => { closeSubModal(); setExpandedActionsId(null) }}
+                                    onClose={closeAll}
                                     onBack={() => closeSubModal()}
                                 />
                             )}
 
-                            {/* Modal xoá dữ liệu bán hàng (Admin) — bắt gõ lại tên địa chỉ vì đây là hard-delete
-                                không thể hoàn tác (orders/expenses/shift_closings), không đụng config/menu.
-                                "Hủy" quay lại modal thao tác, X/tap-outside mới thoát hẳn. */}
                             {subModal?.type === 'wipe' && subModal.addressId === addr.id && (
-                                <Dialog
-                                    onClose={() => { if (!wiping) { closeSubModal(); setExpandedActionsId(null); setError('') } }}
-                                    panelClassName="w-full max-w-sm mx-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden"
-                                >
-                                        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-8 h-8 rounded-[10px] bg-danger/10 flex items-center justify-center">
-                                                    <Eraser size={15} className="text-danger" />
-                                                </div>
-                                                <p className="text-text font-black text-sm leading-none">Xoá dữ liệu bán hàng</p>
-                                            </div>
-                                            {!wiping && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { closeSubModal(); setExpandedActionsId(null); setError('') }}
-                                                    className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
-                                                >
-                                                    <X size={16} />
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="p-5 flex flex-col gap-4">
-                                            <p className="text-text-secondary text-xs leading-relaxed">
-                                                Xoá toàn bộ đơn hàng, chi phí, phiếu chốt ca của <span className="font-bold text-text">{addr.name}</span>. Menu, công thức, nguyên liệu, gói đăng ký được giữ nguyên. <span className="text-danger font-bold">Không thể hoàn tác.</span>
-                                            </p>
-                                            <div>
-                                                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-1.5">Gõ lại tên địa chỉ để xác nhận</label>
-                                                <input
-                                                    type="text"
-                                                    value={wipeConfirmName}
-                                                    onChange={e => setWipeConfirmName(e.target.value)}
-                                                    disabled={wiping}
-                                                    placeholder={addr.name}
-                                                    className="w-full px-4 py-3 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-danger/40 focus:border-danger disabled:opacity-50"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            {/* Modal là overlay z-50 toàn màn hình nên ErrorBanner cuối trang bị che khuất —
-                                                lỗi RPC phải hiện ngay trong modal, không thì admin không biết vì sao thất bại. */}
-                                            {error && (
-                                                <p className="text-danger text-xs font-medium -mt-2">{error}</p>
-                                            )}
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    disabled={wiping}
-                                                    onClick={() => { closeSubModal(); setError('') }}
-                                                    className="flex-1 py-3 rounded-[14px] bg-bg border border-border/60 text-text-secondary font-bold text-sm hover:bg-surface-light transition-colors disabled:opacity-50"
-                                                >
-                                                    Hủy
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={wiping || wipeConfirmName.trim().toUpperCase() !== addr.name.toUpperCase()}
-                                                    onClick={() => handleWipeSalesData(addr)}
-                                                    className="flex-1 py-3 rounded-[14px] bg-danger text-white font-black text-sm hover:bg-danger/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                                >
-                                                    {wiping ? <Loader size={14} className="animate-spin" /> : 'Xoá vĩnh viễn'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                </Dialog>
+                                <WipeAddressModal
+                                    addr={addr}
+                                    onCancel={cancelSubModal}
+                                    onClose={closeAllWithError}
+                                    error={error}
+                                    setError={setError}
+                                />
                             )}
 
-                            {/* Modal xoá địa chỉ — bắt gõ lại tên như modal xoá dữ liệu bán hàng, vì đây cũng là hard-delete
-                                không thể hoàn tác. "Hủy" quay lại modal thao tác, X/tap-outside mới thoát hẳn. */}
                             {subModal?.type === 'delete' && subModal.addressId === addr.id && (
-                                <Dialog
-                                    onClose={() => { if (!deleting) { closeSubModal(); setExpandedActionsId(null); setError('') } }}
-                                    panelClassName="w-full max-w-sm mx-4 bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden"
-                                >
-                                        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-8 h-8 rounded-[10px] bg-danger/10 flex items-center justify-center">
-                                                    <Trash2 size={15} className="text-danger" />
-                                                </div>
-                                                <p className="text-text font-black text-sm leading-none">Xóa địa chỉ</p>
-                                            </div>
-                                            {!deleting && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { closeSubModal(); setExpandedActionsId(null); setError('') }}
-                                                    className="p-1.5 text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-light"
-                                                >
-                                                    <X size={16} />
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="p-5 flex flex-col gap-4">
-                                            <p className="text-text-secondary text-xs leading-relaxed">
-                                                Xoá toàn bộ dữ liệu của <span className="font-bold text-text">{addr.name}</span> — menu, công thức, nguyên liệu, đơn hàng, chi phí, gói đăng ký. <span className="text-danger font-bold">Không thể hoàn tác.</span>
-                                            </p>
-                                            {addr.warehouse_group_id && addresses.some(a => a.id !== addr.id && a.warehouse_group_id === addr.warehouse_group_id) && (
-                                                <p className="text-warning text-xs font-bold leading-relaxed -mt-1">
-                                                    {addr.name} đang dùng chung kho tổng với địa chỉ khác — xoá sẽ làm mất phần đóng góp của {addr.name} trong số tồn kho tổng của các địa chỉ đó.
-                                                </p>
-                                            )}
-                                            <div>
-                                                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-1.5">Gõ lại tên địa chỉ để xác nhận</label>
-                                                <input
-                                                    type="text"
-                                                    value={deleteConfirmName}
-                                                    onChange={e => setDeleteConfirmName(e.target.value)}
-                                                    disabled={deleting}
-                                                    placeholder={addr.name}
-                                                    className="w-full px-4 py-3 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-danger/40 focus:border-danger disabled:opacity-50"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            {error && (
-                                                <p className="text-danger text-xs font-medium -mt-2">{error}</p>
-                                            )}
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    disabled={deleting}
-                                                    onClick={() => { closeSubModal(); setError('') }}
-                                                    className="flex-1 py-3 rounded-[14px] bg-bg border border-border/60 text-text-secondary font-bold text-sm hover:bg-surface-light transition-colors disabled:opacity-50"
-                                                >
-                                                    Hủy
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={deleting || deleteConfirmName.trim().toUpperCase() !== addr.name.toUpperCase()}
-                                                    onClick={() => handleRemoveAddress(addr)}
-                                                    className="flex-1 py-3 rounded-[14px] bg-danger text-white font-black text-sm hover:bg-danger/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                                >
-                                                    {deleting ? <Loader size={14} className="animate-spin" /> : 'Xóa vĩnh viễn'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                </Dialog>
+                                <DeleteAddressModal
+                                    addr={addr}
+                                    addresses={addresses}
+                                    onRemove={onRemove}
+                                    onCancel={cancelSubModal}
+                                    onClose={closeAllWithError}
+                                    onSuccess={closeAll}
+                                    error={error}
+                                    setError={setError}
+                                />
                             )}
                         </div>
                     )
@@ -984,4 +481,3 @@ function ActionPill({ icon, label, tone = 'primary', onClick, className = '' }) 
         </button>
     )
 }
-
