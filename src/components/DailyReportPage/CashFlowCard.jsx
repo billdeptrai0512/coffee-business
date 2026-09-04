@@ -1,9 +1,10 @@
-import { useMemo, useState, useRef, useEffect } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatVND, parseVNDInput, capFirst } from '../../utils'
 import { dayMonthVN } from '../../utils/dateVN'
 import { ingredientLabel, normalizeIngredientCategory, INGREDIENT_CATEGORIES } from '../../utils/ingredients'
 import { groupMeta } from '../../constants/expenseGroups'
+import { useClickOutside } from '../../hooks/useClickOutside'
 import { computeCashFlowTotals } from '../../utils/reportStats'
 import { useProducts } from '../../contexts/ProductContext'
 import { onboardingHintClass } from '../../utils/onboardingHint'
@@ -422,12 +423,7 @@ function Section({ title, total, blocks, expandedCats, toggleCat, emptyText, onE
 function PhaseDot({ phase }) {
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
-    useEffect(() => {
-        if (!open) return
-        const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false) }
-        document.addEventListener('pointerdown', onDown)
-        return () => document.removeEventListener('pointerdown', onDown)
-    }, [open])
+    useClickOutside(ref, () => setOpen(false), { active: open })
     const isPost = phase === 'post_close' || phase === 'mixed'
     const label = phase === 'mixed' ? 'Gồm chi phí trong ca và sau chốt ca'
         : phase === 'post_close' ? 'Chi phí phát sinh sau chốt ca'

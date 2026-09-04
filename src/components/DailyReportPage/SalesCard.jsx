@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { BarChart, Bar, CartesianGrid, XAxis } from 'recharts'
 import { formatVND } from '../../utils'
+import { useClickOutside } from '../../hooks/useClickOutside'
 
 const CHART_HEIGHT = 200
 
@@ -30,17 +31,7 @@ function SalesCard({
         return () => ro.disconnect()
     }, [])
 
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setActivePoint(null)
-        }
-        document.addEventListener('mousedown', handleClickOutside)
-        document.addEventListener('touchstart', handleClickOutside)
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside)
-            document.removeEventListener('touchstart', handleClickOutside)
-        }
-    }, [])
+    useClickOutside(wrapperRef, () => setActivePoint(null))
 
     const handleChartClick = (e) => {
         if (e?.target?.dataset?.bar !== 'true') setActivePoint(null)

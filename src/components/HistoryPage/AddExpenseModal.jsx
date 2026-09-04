@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import { X, Check, ChevronDown, Settings2 } from 'lucide-react'
 import MoneyInput from '../common/MoneyInput'
 import DatePicker from '../common/DatePicker'
@@ -6,14 +6,9 @@ import ChangeCategorySheet from './ChangeCategorySheet'
 import { formatIsoDisplay } from '../common/datePickerUtils'
 import { parseVNDInput } from '../../utils'
 import { dateStringVN } from '../../utils/dateVN'
-import { EXPENSE_GROUPS, groupMeta } from '../../constants/expenseGroups'
+import { EXPENSE_GROUPS, groupMeta, labelsInGroup } from '../../constants/expenseGroups'
 import { BottomSheet } from '../common/ModalShell'
-
-const KNOWN_GROUP_KEYS = new Set(EXPENSE_GROUPS.map(g => g.key))
-// Nhãn của 1 nhóm; nhãn legacy không khớp nhóm nào → coi như Vận hành.
-const labelsInGroup = (categories, key) => categories.filter(c =>
-    c.group_section === key || (key === 'operating' && !KNOWN_GROUP_KEYS.has(c.group_section))
-)
+import { useClickOutside } from '../../hooks/useClickOutside'
 
 // Create flow: pick label → name → amount → (date) → submit. Payment defaults to
 // cash on insert; user toggles it on the expense card (ExpensePanel) after the row
@@ -312,12 +307,7 @@ export default function AddExpenseModal({
 // lại trigger không bị listener đóng trước rồi onToggle mở lại.
 function SelectRow({ valueLabel, valueDot, placeholder = 'Chọn…', disabled, open, onToggle, onClose, children }) {
     const ref = useRef(null)
-    useEffect(() => {
-        if (!open) return
-        const onDown = (e) => { if (!ref.current?.contains(e.target)) onClose?.() }
-        document.addEventListener('pointerdown', onDown)
-        return () => document.removeEventListener('pointerdown', onDown)
-    }, [open, onClose])
+    useClickOutside(ref, () => onClose?.(), { active: open })
     return (
         <div ref={ref} className="relative">
             <button

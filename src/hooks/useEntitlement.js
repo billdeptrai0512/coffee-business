@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAddress } from '../contexts/AddressContext'
 import { useAuth } from '../contexts/AuthContext'
+import { ALL_TIER } from '../constants/monetization'
 
 // ─── Client kill switch (build-time) ─────────────────────────────────────────
 //   Master capability. Build với false → monetization TẮT CỨNG, không hỏi server.
@@ -123,7 +124,7 @@ export function useEntitlement() {
                 }
                 // RPC trả về rows { tier, valid_to } — 1 row tier='all' còn hạn = có quyền.
                 const rows = Array.isArray(data) ? data : (data ? [data] : [])
-                setState({ hasAccess: rows.some(r => r.tier === 'all'), loading: false })
+                setState({ hasAccess: rows.some(r => r.tier === ALL_TIER), loading: false })
             })
     }, [bypass, configLoading, selectedAddress?.id])
 

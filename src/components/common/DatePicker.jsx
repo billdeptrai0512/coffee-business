@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { dateStringVN } from '../../utils/dateVN'
+import { useClickOutside } from '../../hooks/useClickOutside'
 import {
     getMonthGrid, shiftMonth, monthTitle, formatIsoDisplay, formatIsoShort,
     isIsoBefore, isIsoAfter, isIsoEqual, presetRanges, parseIsoDay,
@@ -61,20 +62,8 @@ export default function DatePicker({
         }
     }, [open, anchorIso])
 
-    // Outside click + Escape close — listeners only live while open.
-    useEffect(() => {
-        if (!open) return
-        const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
-        const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
-        window.addEventListener('mousedown', onDown)
-        window.addEventListener('touchstart', onDown)
-        window.addEventListener('keydown', onKey)
-        return () => {
-            window.removeEventListener('mousedown', onDown)
-            window.removeEventListener('touchstart', onDown)
-            window.removeEventListener('keydown', onKey)
-        }
-    }, [open])
+    // Outside click + Escape close — listener only lives while open.
+    useClickOutside(wrapRef, () => setOpen(false), { active: open, escape: true })
 
     // todayISO + presets re-derive on open so a terminal left past VN midnight
     // doesn't keep highlighting yesterday or hand back a stale "Hôm nay" range.

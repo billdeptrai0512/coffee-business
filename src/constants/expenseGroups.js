@@ -17,3 +17,11 @@ export const EXPENSE_GROUPS = [
 
 export const groupMeta = (key) =>
     EXPENSE_GROUPS.find(g => g.key === key) || EXPENSE_GROUPS[0]
+
+const KNOWN_GROUP_KEYS = new Set(EXPENSE_GROUPS.map(g => g.key))
+
+// Nhãn thuộc 1 nhóm — nhãn cũ chưa gán group_section (hoặc gán giá trị lạ) mặc định
+// rơi vào "operating" thay vì biến mất khỏi mọi nhóm.
+export const labelsInGroup = (categories, key) => categories.filter(c =>
+    c.group_section === key || (key === 'operating' && !KNOWN_GROUP_KEYS.has(c.group_section))
+)

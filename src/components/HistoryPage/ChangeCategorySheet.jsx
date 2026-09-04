@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X, Plus, Check, Pencil, Trash2, ChevronDown } from 'lucide-react'
-import { EXPENSE_GROUPS, groupMeta } from '../../constants/expenseGroups'
+import { EXPENSE_GROUPS, groupMeta, labelsInGroup } from '../../constants/expenseGroups'
 import { formatVND } from '../../utils/money'
 import { dayMonthVN } from '../../utils/dateVN'
 import { BottomSheet } from '../common/ModalShell'
@@ -9,12 +9,6 @@ import { BottomSheet } from '../common/ModalShell'
 // gắn nhãn — KHÓA xoá VÀ khoá đổi nhóm để không gãy fallback. Nhãn còn lại tự do.
 const isProtectedFallback = (c) =>
     c.is_default && c.group_section === 'operating' && c.name === 'Chi phí khác'
-
-// Nhãn thuộc 1 nhóm; nhãn legacy không khớp nhóm nào → coi như Vận hành.
-const KNOWN_GROUP_KEYS = new Set(EXPENSE_GROUPS.map(g => g.key))
-const labelsInGroup = (categories, key) => categories.filter(c =>
-    c.group_section === key || (key === 'operating' && !KNOWN_GROUP_KEYS.has(c.group_section))
-)
 
 // Màn QUẢN LÝ NHÃN (mở từ AddExpenseModal). Vai trò: CRUD nhãn theo nhóm + tái
 // phân loại chi phí khi xoá nhãn còn chi phí. Việc CHỌN nhãn cho chi phí dùng 2

@@ -515,46 +515,8 @@ export async function removeSession(userId) {
     if (error) console.error('removeSession error:', error)
 }
 
-// Fetch active sessions for a list of address IDs (last_seen within 10 minutes).
-//
-// Avoid the embedded `users(name)` join — it triggers RLS on users which now
-// scopes reads to the caller's own team (20260711 fix). If this ever gets
-// reached from an unauthenticated context (e.g. future guest/demo mode), the
-// join would fail with `permission denied`.
-//
-// Fix: fetch sessions alone, then resolve names in a separate best-effort query.
-export async function fetchActiveSessions(addressIds) {
-    if (isGuest()) return []
-    if (!supabase || !addressIds?.length) return []
-    const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString()
-    const { data, error } = await supabase
-        .from('active_sessions')
-        .select('user_id, address_id, last_seen')
-        .in('address_id', addressIds)
-        .gte('last_seen', cutoff)
-    if (error) {
-        console.error('fetchActiveSessions error:', error)
-        return []
-    }
-    if (!data?.length) return []
-
-    // Best-effort name lookup. Authenticated managers/staff can read users via RLS;
-    // anonymous contexts can't and we silently degrade to undefined names.
-    const userIds = [...new Set(data.map(s => s.user_id))]
-    let userById = {}
-    try {
-        const { data: usersData } = await supabase
-            .from('users')
-            .select('id, name, role')
-            .in('id', userIds)
-        if (usersData) {
-            for (const u of usersData) userById[u.id] = { name: u.name, role: u.role }
-        }
-    } catch { /* RLS blocked — leave names undefined */ }
-
-    return data.map(s => ({ ...s, users: userById[s.user_id] || {} }))
-}
-
+// fetchActiveSessions đã xoá (không còn nơi nào gọi — "ai đang online" giờ tính
+// trong fetchBranchesTodayStats/sessionsMap bên dưới, cùng cutoff 10 phút).
 // countActiveSessions đã xoá (đếm sai, cả 2 cổng dùng nó đã gỡ) — xem MONETIZATION §7.1.
 
 // Fetch today's cup count + revenue + active sessions (kèm tên/role) for multiple

@@ -460,7 +460,7 @@ export function POSProvider() {
         // Chỉ còn nuôi last_seen cho màn /addresses hiện "ai đang trong ca". Trước đây
         // interval chạy 30s để dò lại số máy cho cổng realtime (cổng đã bỏ, xem
         // useOrdersPoll.js); giờ 5 phút là đủ — last_seen chỉ cần nằm trong mốc cắt 10
-        // phút của fetchActiveSessions.
+        // phút mà fetchBranchesTodayStats/sessionsMap dùng để tính "ai đang online".
         //
         // Đọc userId từ localStorage (AddressContext ghi lúc upsert lần đầu) chứ không
         // import từ AuthContext: import chéo hai chiều giữa hai context là vòng lặp.
