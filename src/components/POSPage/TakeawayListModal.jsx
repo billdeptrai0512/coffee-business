@@ -1,9 +1,9 @@
-import { useState } from 'react'
 import { ArrowLeft, Check, Printer, ArrowRightLeft, Trash2 } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
 import { useHistory } from '../../contexts/HistoryContext'
 import { useProducts } from '../../contexts/ProductContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
+import { useMoveTarget } from '../../hooks/useMoveTarget'
 import { formatVND, discountToPercent } from '../../utils'
 import { timeStringVN, openedLabelVN, dateShortVN, isSameDayVN } from '../../utils/dateVN'
 import { priceLineFor } from '../../utils/billLines'
@@ -21,7 +21,7 @@ export default function TakeawayListModal({ orders, tableNames, onClose, onPick 
     const { toggleServed } = useCart()
     const { handleDeleteOrder } = useHistory()
     const confirm = useConfirm()
-    const [moving, setMoving] = useState(null) // { orderIds: string[], label: string } | null
+    const { moving, startMove, cancelMove } = useMoveTarget()
 
     if (moving) {
         return (
@@ -29,7 +29,7 @@ export default function TakeawayListModal({ orders, tableNames, onClose, onPick 
                 orderIds={moving.orderIds}
                 label={moving.label}
                 tableNames={tableNames}
-                onBack={() => setMoving(null)}
+                onBack={cancelMove}
                 onClose={onClose}
             />
         )
@@ -62,7 +62,7 @@ export default function TakeawayListModal({ orders, tableNames, onClose, onPick 
                         key={order.id}
                         order={order}
                         onToggleServed={() => toggleServed(order)}
-                        onMove={() => setMoving({ orderIds: [order.id], label: `đơn ${openedLabelVN(order.createdAt)}` })}
+                        onMove={() => startMove([order.id], `đơn ${openedLabelVN(order.createdAt)}`)}
                         onDelete={() => handleDelete(order)}
                     />
                 ))}

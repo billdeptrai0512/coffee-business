@@ -447,6 +447,63 @@ export function mergeTableLines(base: TableLine[], add: TableLine[]): TableLine[
     return out
 }
 
+// Bớt các round có id trong dropIds ra khỏi bàn t, tính lại total/lines từ số round còn
+// lại. table=null nếu bàn hết round (lọc bỏ luôn). removed rỗng (table===t, cùng reference)
+// nếu không round nào của bàn này bị bớt. Dùng ở POSContext cho cả xoá đơn (handleDeleteOrder)
+// lẫn chuyển/gộp bàn (moveTableRounds) — hai chỗ khác nhau mỗi việc dropIds là gì và có cần
+// đọc lại removed hay không.
+export function extractRounds(t: OpenTable, dropIds: Set<UUID>): { table: OpenTable | null, removed: TableRound[] } {
+    const removed = t.rounds.filter(r => dropIds.has(r.id))
+    if (!removed.length) return { table: t, removed }
+    const stay = t.rounds.filter(r => !dropIds.has(r.id))
+    const table = stay.length
+        ? { ...t, rounds: stay, total: stay.reduce((s, r) => s + r.total, 0), lines: stay.reduce((ls, r) => mergeTableLines(ls, r.lines), [] as TableLine[]) }
+        : null
+    return { table, removed }
+}
+
+// Đóng bàn (tính tiền) = bỏ khỏi lưới. Dùng ở POSContext (handleCloseTable) cho cả optimistic
+// drop lẫn undo (drop lại sau khi hoàn tác thất bại).
+export function dropTableByName(tables: OpenTable[], name: string): OpenTable[] {
+    return tables.filter(t => t.name !== name)
+}
+
+// Hoàn tác đóng bàn: thêm lại bàn đã lưu TRƯỚC lúc đóng. Idempotent — bàn có thể đã có mặt
+// trong lưới lúc bấm Hoàn tác (vd refreshTables chạy xen giữa), thêm lần hai là 2 thẻ cùng
+// tên nhảy ra trên lưới bàn.
+export function restoreTable(tables: OpenTable[], table: OpenTable): OpenTable[] {
+    return tables.some(t => t.name === table.name) ? tables : [...tables, table]
+}
+
+// Gộp (chuyển hết đợt của 1 bàn) / tách (chuyển 1 đợt) đều dùng hàm này — chỉ khác orderIds
+// truyền vào idSet. Trả nextTables (openTables sau khi chuyển) + moved (các round vừa chuyển).
+// moved rỗng nghĩa là orderIds không khớp round nào đang có trong prevTables (state vừa đổi
+// ở máy khác) — người gọi phải tự fallback gọi mạng + refreshTables thay vì áp state lạc quan
+// (nextTables trả về nguyên prevTables trong trường hợp đó, không phải mảng rỗng).
+export function moveRoundsIntoTable(prevTables: OpenTable[], idSet: Set<UUID>, targetName: string | null): { nextTables: OpenTable[], moved: TableRound[] } {
+    const moved: TableRound[] = []
+    const withoutMoved = prevTables
+        .map(t => {
+            const { table, removed } = extractRounds(t, idSet)
+            moved.push(...removed)
+            return table
+        })
+        .filter((t): t is OpenTable => t !== null)
+
+    if (!moved.length) return { nextTables: prevTables, moved }
+
+    const movedLines = moved.reduce((ls, r) => mergeTableLines(ls, r.lines), [] as TableLine[])
+    const movedTotal = moved.reduce((s, r) => s + r.total, 0)
+    const destIdx = withoutMoved.findIndex(t => t.name === targetName)
+    const nextTables = destIdx === -1
+        ? [...withoutMoved, { name: targetName, total: movedTotal, rounds: moved, openedAt: moved.reduce((min, r) => r.createdAt < min ? r.createdAt : min, moved[0].createdAt), lines: movedLines }]
+        : withoutMoved.map((t, i) => i === destIdx
+            ? { ...t, rounds: [...t.rounds, ...moved], total: t.total + movedTotal, lines: mergeTableLines(t.lines, movedLines) }
+            : t)
+
+    return { nextTables, moved }
+}
+
 // Đánh dấu một đợt đã pha xong và bưng ra. Chỉ là mốc thời gian trên orders, không
 // đụng tiền — bàn 2 người vừa pha vừa thu tiền nhìn vào đây để biết đợt nào còn nợ khách.
 // servedAt = null để bỏ đánh dấu (bấm nhầm).

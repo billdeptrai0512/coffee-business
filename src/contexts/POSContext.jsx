@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { fetchTodayStats, submitOrder, fetchTodayOrders, deleteOrder, updateOrderDiscount, fetchTodayExpenses, insertExpense, updateExpense, deleteExpense, fetchRecentOrders, invalidateDailyContext, fetchOpenTables, closeTable, reopenTable, markOrderServed, mergeTableLines, tableLineName, moveTableRounds as moveTableRoundsService } from '../services/orderService'
+import { fetchTodayStats, submitOrder, fetchTodayOrders, deleteOrder, updateOrderDiscount, fetchTodayExpenses, insertExpense, updateExpense, deleteExpense, fetchRecentOrders, invalidateDailyContext, fetchOpenTables, closeTable, reopenTable, markOrderServed, mergeTableLines, extractRounds, dropTableByName, restoreTable, moveRoundsIntoTable, tableLineName, moveTableRounds as moveTableRoundsService } from '../services/orderService'
 import { upsertSession } from '../services/authService'
 import { useOfflineSync, addPendingOrder, addPendingTableClose, removePendingTableClose } from '../hooks/useOfflineSync'
 import { useOrdersPoll } from '../hooks/useOrdersPoll'
 import { dateStringVN } from '../utils/dateVN'
 import { calculateProductCost, computeDiscount, discountToPercent, cartLineSubtotal, NO_DISCOUNT } from '../utils'
+import { cartBelongsToAddress, shouldRestoreCartOnFailure } from '../utils/posCartGuards'
 import { useProducts } from './ProductContext'
 import { useAddress } from './AddressContext'
 import { useAuth } from './AuthContext'
@@ -79,7 +80,7 @@ export function POSProvider() {
     // localStorage và chỉ nạp lại khi trùng.
     // Hàm, không phải const: chỉ hai initializer bên dưới cần nó và chúng chỉ chạy lúc
     // mount — để thành const là đọc localStorage lại sau mỗi cú chạm món.
-    const persistedForThisAddress = () => !addressId || localStorage.getItem(STORAGE_KEYS.CART_ADDRESS) === addressId
+    const persistedForThisAddress = () => cartBelongsToAddress(localStorage.getItem(STORAGE_KEYS.CART_ADDRESS), addressId)
 
     const [cart, setCart] = useState(() => persistedForThisAddress() ? loadLocalJSON(STORAGE_KEYS.CART, []) : [])
     // Initialized to cart (not []) so a held item restored from localStorage on
@@ -221,10 +222,10 @@ export function POSProvider() {
         if (!addressId || !name) return
         const closedAt = new Date().toISOString()
         const drop = () => {
-            setOpenTables(prev => prev.filter(t => t.name !== name))
+            setOpenTables(prev => dropTableByName(prev, name))
             setTableName(prev => (prev === name ? '' : prev))
         }
-        const restore = () => setOpenTables(prev => (prev.some(t => t.name === name) ? prev : [...prev, table]))
+        const restore = () => setOpenTables(prev => restoreTable(prev, table))
 
         try {
             await closeTable(addressId, name, closedAt)
@@ -265,23 +266,9 @@ export function POSProvider() {
         // t.name === name generic, không cần rẽ nhánh riêng cho null.
         const name = targetTableName === null ? null : targetTableName?.trim()
         if (!addressId || !idSet.size || (name !== null && !name)) return
-        const linesOf = (rounds) => rounds.reduce((ls, r) => mergeTableLines(ls, r.lines), [])
 
         const prevTables = openTablesRef.current
-        const moved = []
-        // Bàn nào có đợt bị lấy đi thì dựng lại (rounds/total/lines mới); bàn hết đợt bị
-        // lọc bỏ luôn (bàn nguồn 1 đợt duy nhất khi gộp/tách hết). Không đụng object cũ —
-        // rollback (khi network lỗi) cần prevTables còn nguyên vẹn.
-        const withoutMoved = prevTables
-            .map(t => {
-                const stay = t.rounds.filter(r => !idSet.has(r.id))
-                if (stay.length === t.rounds.length) return t
-                moved.push(...t.rounds.filter(r => idSet.has(r.id)))
-                return stay.length
-                    ? { ...t, rounds: stay, total: stay.reduce((s, r) => s + r.total, 0), lines: linesOf(stay) }
-                    : null
-            })
-            .filter(Boolean)
+        const { nextTables, moved } = moveRoundsIntoTable(prevTables, idSet, name)
 
         // orderIds không khớp round nào đang có trong state (VD state vừa đổi ở máy khác) —
         // không có gì để áp lạc quan, cứ gọi mạng rồi refreshTables như đường cũ.
@@ -290,15 +277,6 @@ export function POSProvider() {
             catch (err) { showError(err, 'Chuyển bàn') }
             return
         }
-
-        const movedTotal = moved.reduce((s, r) => s + r.total, 0)
-        const movedLines = linesOf(moved)
-        const destIdx = withoutMoved.findIndex(t => t.name === name)
-        const nextTables = destIdx === -1
-            ? [...withoutMoved, { name, total: movedTotal, rounds: moved, openedAt: moved.reduce((min, r) => r.createdAt < min ? r.createdAt : min, moved[0].createdAt), lines: movedLines }]
-            : withoutMoved.map((t, i) => i === destIdx
-                ? { ...t, rounds: [...t.rounds, ...moved], total: t.total + movedTotal, lines: mergeTableLines(t.lines, movedLines) }
-                : t)
 
         setOpenTables(nextTables)
         try {
@@ -690,7 +668,7 @@ export function POSProvider() {
                         // dineIn: handleConfirm đã dọn giỏ trước khi gửi (guard chống double-tap),
                         // nên lỗi thật (không phải mạng — nhánh trên đã nuốt) sẽ làm MẤT nguyên
                         // cả bàn và nhân viên phải bấm lại từ đầu. Trả giỏ về để bấm Thanh toán lại.
-                        if (dineInRef.current && cartRef.current.length === 0) {
+                        if (shouldRestoreCartOnFailure(dineInRef.current, cartRef.current.length)) {
                             cartRef.current = cartItems
                             setCart(cartItems)
                         }
@@ -901,15 +879,10 @@ export function POSProvider() {
                 // thêm 1 lượt fetchOpenTables khiến xoá đợt/đơn LÂU HƠN HẲN so với tạo/gộp/tách/
                 // ra món (đều patch state tại chỗ), thẻ "Mang đi"/bàn đứng yên vài trăm ms sau
                 // khi bấm Xoá trong lúc những nút khác phản hồi tức thì.
-                if (dineIn) setOpenTables(prev => prev
-                    .map(t => {
-                        const stay = t.rounds.filter(r => r.id !== orderId)
-                        if (stay.length === t.rounds.length) return t
-                        return stay.length
-                            ? { ...t, rounds: stay, total: stay.reduce((s, r) => s + r.total, 0), lines: stay.reduce((ls, r) => mergeTableLines(ls, r.lines), []) }
-                            : null
-                    })
-                    .filter(Boolean))
+                if (dineIn) {
+                    const dropped = new Set([orderId])
+                    setOpenTables(prev => prev.map(t => extractRounds(t, dropped).table).filter(Boolean))
+                }
             }
             showToast('Đã xóa đơn hàng', 'success')
             return true

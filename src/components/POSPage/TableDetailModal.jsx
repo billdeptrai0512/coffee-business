@@ -6,6 +6,7 @@ import { useHistory } from '../../contexts/HistoryContext'
 import { useProducts } from '../../contexts/ProductContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { useAddress } from '../../contexts/AddressContext'
+import { useMoveTarget } from '../../hooks/useMoveTarget'
 import { formatVND, discountToPercent } from '../../utils'
 import { printBillNative } from '../../lib/escposBitmap'
 import { timeStringVN, openedLabelVN, dateShortVN, isSameDayVN } from '../../utils/dateVN'
@@ -35,7 +36,9 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
     // chọn bàn đích (TableTargetPicker) — orderIds là thứ duy nhất khác nhau giữa hai thao
     // tác. moving=null là màn bình thường; có giá trị là màn "chọn bàn đích" thay chỗ danh
     // sách đợt.
-    const [moving, setMoving] = useState(null) // { orderIds: string[], label: string } | null
+    // orderIds rỗng (mọi đợt đều offline chưa có id) thì không có gì để chuyển — cả hai nút
+    // gọi startMove bên dưới (Gộp bàn, Chuyển đợt) đã tự ẩn ở nơi gọi trong trường hợp đó.
+    const { moving, startMove, cancelMove } = useMoveTarget()
     // In native (html2canvas + gửi mạng) mất vài giây thật, không tức thì như
     // window.print() — thiếu cờ này thì bấm 2 lần liên tiếp trong lúc đang xử lý sẽ in/
     // tính tiền 2 lần, và người dùng không biết bấm có ăn hay chưa.
@@ -163,12 +166,6 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
         }
     }
 
-    // orderIds rỗng (mọi đợt đều offline chưa có id) thì không có gì để chuyển — nút
-    // gọi hàm này đã bị ẩn ở nơi gọi trong trường hợp đó.
-    function startMove(orderIds, label) {
-        setMoving({ orderIds, label })
-    }
-
     const otherTables = tableNames.filter(n => n !== table.name)
     // Đợt offline chưa có id thì không chuyển được (cùng lý do ẩn hàng nút Sửa/Xoá bên
     // dưới) — "Gộp bàn" ở header chỉ chuyển những đợt đã có id.
@@ -181,7 +178,7 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
                 label={moving.label}
                 tableNames={otherTables}
                 showTakeawayOption
-                onBack={() => setMoving(null)}
+                onBack={cancelMove}
                 onClose={onClose}
             />
         )
