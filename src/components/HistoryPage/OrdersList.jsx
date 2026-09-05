@@ -41,7 +41,7 @@ export default function OrdersList({
                 <div className="flex flex-col items-end shrink-0 ml-3">
                     <span className="text-[12px] font-black text-text uppercase mb-0.5">Doanh thu</span>
                     <span className={`text-[17px] font-bold tabular-nums leading-none ${totalRevenue > 0 ? 'text-success' : 'text-text-secondary'}`}>
-                        {formatVND(totalRevenue || 0)}
+                        {formatVND(totalRevenue)}
                     </span>
                 </div>
             </div>

@@ -294,10 +294,6 @@ export default function HistoryPage() {
         }, 0)
     }, 0), [allOrders, productCountMap])
 
-    const totalRevenue = useMemo(() => allOrders.reduce((sum, o) => (
-        o.isExpense || o.deletedAt ? sum : sum + (o.total || 0)
-    ), 0), [allOrders])
-
     const runningTotals = useMemo(() => {
         const map = new Map()
         let cumulative = 0
@@ -308,6 +304,9 @@ export default function HistoryPage() {
         }
         return map
     }, [allOrders])
+
+    // runningTotals is cumulative newest-first, so allOrders[0]'s value is the grand total.
+    const totalRevenue = runningTotals.get(allOrders[0]?.id) || 0
 
     // ─── Expense data ─────────────────────────────────────────────────
     const baseExpenses = useMemo(() => {
