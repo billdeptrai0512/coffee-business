@@ -1,7 +1,7 @@
 import { onboardingHintClass } from '../../utils/onboardingHint'
 
 const TABS = [
-    { key: 'orders', label: 'Thu nhập', activeColor: 'bg-primary' },
+    { key: 'orders', label: 'Doanh thu', activeColor: 'bg-primary' },
     { key: 'expense', label: 'Chi phí', activeColor: 'bg-danger' },
     { key: 'report', label: 'Báo cáo', activeColor: 'bg-success' },
 ]

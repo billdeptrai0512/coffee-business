@@ -9,7 +9,7 @@ export default {
     done: (ctx) => ctx.journalProgress.viewedIncome && ctx.journalProgress.viewedExpense && ctx.journalProgress.viewedReport,
     Body: ({ ctx }) => (
         <>
-            <ChecklistRow label="Thu nhập" done={ctx.journalProgress.viewedIncome} />
+            <ChecklistRow label="Doanh thu" done={ctx.journalProgress.viewedIncome} />
             <ChecklistRow label="Chi phí" done={ctx.journalProgress.viewedExpense} />
             <ChecklistRow label="Báo cáo" done={ctx.journalProgress.viewedReport} />
         </>
