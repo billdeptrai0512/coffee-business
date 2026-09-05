@@ -220,7 +220,7 @@ export default function MenuGrid({ products, cart, activeItem, onAddItem, onCanc
                     : 'Liên hệ quản lý để được thiết lập menu.')
 
         return (
-            <main className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-6 pb-6 pt-5 flex items-center justify-center">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-6 pb-6 pt-5 flex items-center justify-center hide-scrollbar">
                 <div className="bg-surface border border-border/60 rounded-[24px] p-6 max-w-sm w-full text-center shadow-sm">
                     <div className="text-[15px] font-black text-text mb-1.5">{title}</div>
                     <div className="text-[13px] text-text-secondary mb-4 leading-relaxed">{description}</div>
@@ -277,7 +277,7 @@ export default function MenuGrid({ products, cart, activeItem, onAddItem, onCanc
     })
 
     return (
-        <main className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-6 pb-6 pt-5">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-6 pb-6 pt-5 hide-scrollbar">
             <div className="grid grid-cols-2 gap-4 pt-1">
                 {gridItems}
             </div>

@@ -166,11 +166,15 @@ export default function TableModal({ onClose, inline = false }) {
 
                 <div className="grid grid-cols-2 gap-3">
                     {/* Đơn mang đi ở quán có bàn: bỏ chọn bàn, đơn về lại dạng không nhãn.
-                        Có đơn đang chờ ra món thì hiện overview như thẻ bàn busy (bấm mở
-                        danh sách) — không thì tile tĩnh bấm-là-chọn như trước. */}
+                        Có đơn đang chờ ra món thì hiện overview như thẻ bàn busy — chạm 1 cái
+                        để CHỌN (như mọi thẻ khác), chạm cái nữa vào đúng thẻ đang chọn mới mở
+                        danh sách chi tiết. Không thì tile tĩnh bấm-là-chọn như trước. */}
                     {takeaway ? (
                         <div className={`${CARD_H} relative rounded-[20px] border p-3.5 flex flex-col gap-1.5 transition-colors ${!tableName ? 'bg-primary/5 border-primary' : 'bg-surface border-border/60'}`}>
-                            <button onClick={() => setShowTakeaway(true)} className="flex-1 min-h-0 w-full overflow-hidden text-left flex flex-col gap-1 focus:outline-none">
+                            {/* Chỉ đổi tiêu điểm, không pick('') (không gọi onClose) — mobile
+                                là bottom-sheet, đóng ngay thì tap thứ 2 (mở chi tiết) không còn
+                                gì để nhấn vào, phải mở lại sheet từ đầu. */}
+                            <button onClick={() => (!tableName ? setShowTakeaway(true) : setTableName(''))} className="flex-1 min-h-0 w-full overflow-hidden text-left flex flex-col gap-1 focus:outline-none">
                                 <span className="shrink-0 w-full flex items-baseline justify-between gap-2">
                                     <span className="text-[13px] font-black uppercase tracking-wide text-text">Mang đi</span>
                                     <span className="shrink-0 text-[12px] font-black tabular-nums text-text-secondary">{takeawayRounds.length} đơn</span>
@@ -224,9 +228,12 @@ export default function TableModal({ onClose, inline = false }) {
                                     món) để nhân viên overview được cả bàn mà không cần bấm vào từng
                                     bàn — cắt bớt cho vừa khung, bản đầy đủ (kèm món) nằm trong modal
                                     chi tiết.
-                                    Bàn có khách: chạm = mở chi tiết (đọc/sửa/thu tiền đều ở đó).
-                                    Bàn trống: không có gì để đọc, chạm = chọn bàn luôn. */}
-                                <button onClick={() => busy ? setDetail(name) : pick(name)} className="flex-1 min-h-0 w-full overflow-hidden text-left flex flex-col gap-1 focus:outline-none">
+                                    Bàn có khách mà CHƯA phải bàn đang chọn: chạm = chỉ chọn (focus),
+                                    giống mọi thẻ khác — không nhảy thẳng vào chi tiết khi nhân viên
+                                    còn đang lướt qua các bàn. Chạm lần nữa vào đúng bàn đang chọn
+                                    (active) mới mở chi tiết (đọc/sửa/thu tiền đều ở đó). Bàn trống:
+                                    không có gì để đọc, chạm = chọn bàn luôn, không có bước 2. */}
+                                <button onClick={() => (busy && active) ? setDetail(name) : (busy ? setTableName(name) : pick(name))} className="flex-1 min-h-0 w-full overflow-hidden text-left flex flex-col gap-1 focus:outline-none">
                                     <span className="shrink-0 w-full flex items-baseline justify-between gap-2">
                                         <span className={`text-[13px] font-black uppercase tracking-wide line-clamp-1 ${busy || active ? 'text-text' : 'text-text-secondary'}`}>{name}</span>
                                         {busy && <span className="shrink-0 text-[14px] font-black tabular-nums text-primary">{formatVND(t.total)}</span>}
