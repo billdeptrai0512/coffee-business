@@ -15,6 +15,12 @@ import PrintBill from '../common/PrintBill'
 // một lần. Cùng kích thước với hàng nút trong TableDetailModal.
 const ICON_BTN = 'shrink-0 w-[26px] h-[26px] rounded-full border bg-surface-light border-border/60 flex items-center justify-center transition-colors'
 
+// Pill nhỏ dùng cho giờ/mã đơn/tên bàn/tên nhân viên trên thẻ đơn — cùng khuôn
+// nền/viền/bo tròn, ghép thêm modifier riêng (uppercase, tabular-nums, truncate...) tại
+// chỗ dùng. PILL_LG = pill hàng footer, to hơn 1 chút so với pill header (đã yêu cầu).
+const PILL = 'shrink-0 bg-surface-light border border-border/60 rounded-full px-2 py-0.5 text-[11px] font-bold text-text-secondary'
+const PILL_LG = 'shrink-0 bg-surface-light border border-border/60 rounded-full px-2.5 py-1 text-[11px] font-bold text-text-secondary'
+
 export default function OrdersList({
     orders, runningTotals, isLoading, isTodayScope,
     pendingOrders, isSyncing, onRetrySync, onDeleteOffline,
@@ -180,31 +186,42 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
             )}
 
             <div className={`flex flex-col gap-2 ${order.deletedAt ? 'opacity-40 grayscale select-none' : ''}`}>
-                {/* Header: định danh đơn (mã + bàn) bên trái, doanh thu luỹ kế tới đơn này bên
-                    phải — tách khỏi số tiền của RIÊNG đơn này (giờ nằm ở dòng Tổng cộng dưới),
-                    2 con số dễ đọc nhầm nếu để chung 1 hàng. */}
-                <div className="flex justify-between items-center mb-1">
-                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                        {showOrderTotal ? (
-                            <>
-                                {order.orderNo != null && (
-                                    <span className="shrink-0 bg-surface-light border border-border/60 rounded-full px-2 py-0.5 text-[11px] font-bold text-text-secondary tabular-nums">#{order.orderNo}</span>
-                                )}
-                                {order.tableName && (
+                {/* Đơn bàn: giờ + tên bàn/mang đi bên trái, luỹ kế bên phải — tổng riêng của
+                    ĐỢT này thử bỏ (đã có trong hoá đơn in, và đọc được từ danh sách món ngay
+                    dưới), xem còn thiếu không trước khi quyết giữ hay bỏ hẳn. Mã đơn (#id) dồn
+                    xuống hàng footer chung với tên nhân viên — chỉ để tra cứu/đối chiếu. */}
+                {showOrderTotal ? (
+                    <div>
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                <span className={`${PILL} tabular-nums`}>{time}</span>
+                                {order.tableName ? (
                                     // Bàn còn đang mở (openTables) thì bấm nhảy thẳng tới modal chi tiết của
                                     // bàn đó ở /pos — bàn đã tính tiền/đóng thì chỉ mở lưới chọn bàn (TableModal
                                     // tự bỏ qua "detail" không khớp openTables, không lỗi).
                                     <button
                                         type="button"
                                         onClick={() => navigate('/pos', { state: { openTableDetail: order.tableName } })}
-                                        className="shrink-0 bg-surface-light border border-border/60 rounded-full px-2 py-0.5 text-[11px] font-bold text-text-secondary uppercase tracking-wide hover:text-primary hover:border-primary/40 transition-colors"
+                                        className={`${PILL} uppercase tracking-wide hover:text-primary hover:border-primary/40 transition-colors`}
                                     >
                                         {order.tableName}
                                     </button>
+                                ) : (
+                                    <span className={`${PILL} uppercase tracking-wide`}>Mang đi</span>
                                 )}
-                            </>
-                        ) : firstItemInfo && (
-                            <>
+                            </div>
+                            {!order.deletedAt && (
+                                <span className="shrink-0 text-success leading-none text-[14px] font-bold tabular-nums">
+                                    {formatVND(runningTotal)}
+                                </span>
+                            )}
+                        </div>
+                        <div className="border-t border-border/40 my-1.5" />
+                    </div>
+                ) : (
+                    <div className="flex justify-between items-start mb-1 gap-2">
+                        {firstItemInfo && (
+                            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                                 <span className="shrink-0 font-black text-[14px] text-primary">+ {formatVND(firstItemInfo.liveFinal)}</span>
                                 {firstItemInfo.liveDiscount > 0 && (
                                     <span className="shrink-0 text-text-secondary/60 text-[12px] font-bold line-through tabular-nums">{formatVND(firstItemInfo.itemSubtotal)}</span>
@@ -220,15 +237,15 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
                                             : <Percent size={12} strokeWidth={2.5} />}
                                     </button>
                                 )}
-                            </>
+                            </div>
+                        )}
+                        {!order.deletedAt && (
+                            <span className="shrink-0 text-success leading-none text-[14px] font-bold tabular-nums">
+                                {formatVND(runningTotal)}
+                            </span>
                         )}
                     </div>
-                    {!order.deletedAt && (
-                        <span className="shrink-0 text-success leading-none text-[14px] font-bold tabular-nums">
-                            {formatVND(runningTotal)}
-                        </span>
-                    )}
-                </div>
+                )}
                 {firstItemInfo?.editing && (
                     <div className="pb-1">
                         <DiscountEditor
@@ -240,20 +257,8 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
                         />
                     </div>
                 )}
-                {showOrderTotal && (
-                    <div className="border-t border-border/40 pt-2 flex items-baseline justify-between gap-2">
-                        <span className="text-[12px] font-bold uppercase tracking-wide text-text-secondary">Tổng cộng</span>
-                        <div className="flex items-baseline gap-2">
-                            {discountAmount > 0 && (
-                                <span className="text-text-secondary/60 text-[12px] font-bold line-through tabular-nums">{formatVND(subtotal)}</span>
-                            )}
-                            <span className="font-black text-[14px] text-primary">+ {formatVND(order.total)}</span>
-                        </div>
-                    </div>
-                )}
-                <div className="mb-1 border-t border-border/40 pt-2">
-                    <div className="flex flex-col gap-1.5 ">
-                        {order.items?.length > 0 ? order.items.map((item, idx) => {
+                <div className="pl-2 flex flex-col gap-1.5">
+                    {order.items?.length > 0 ? order.items.map((item, idx) => {
                             // Đơn 1 món mang đi (!showOrderTotal) đã hiện giá + nút giảm giá ở
                             // header (firstItemInfo) — ở đây chỉ còn tên + extras, khỏi lặp lại.
                             const { itemName, itemExtras, itemSubtotal, seedDiscount, editing, displayDiscount, liveDiscount, liveFinal } = deriveItem(item)
@@ -305,13 +310,27 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
                         }) : (
                             <span className="text-text text-[14px] leading-snug font-medium whitespace-pre-wrap">Không có chi tiết</span>
                         )}
-                    </div>
                 </div>
 
                 <div className="border-t border-border/40 pt-2 flex justify-between items-center gap-3 leading-none">
-                    <span className="text-text-secondary/70 text-[12px] font-bold truncate min-w-0 leading-none">
-                        {time}{order.staffName ? ` · ${order.staffName}` : ''}
-                    </span>
+                    {/* showOrderTotal: giờ đã lên đầu thẻ (header), mã đơn dồn xuống đây chung
+                        với người tạo — cả hai đều là thông tin tra cứu, không cần nổi bật riêng
+                        một hàng ở trên. Cùng kiểu pill (border+background) với giờ/tên bàn ở
+                        header để đồng bộ, không lẫn với text thường của các đơn không phải bàn. */}
+                    {showOrderTotal ? (
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                            {order.orderNo != null && (
+                                <span className={`${PILL_LG} tabular-nums`}>#{order.orderNo}</span>
+                            )}
+                            {order.staffName && (
+                                <span className={`${PILL_LG} truncate`}>{order.staffName}</span>
+                            )}
+                        </div>
+                    ) : (
+                        <span className="text-text-secondary/70 text-[12px] font-bold truncate min-w-0 leading-none">
+                            {time}{order.staffName ? ` · ${order.staffName}` : ''}
+                        </span>
+                    )}
                     <div className="shrink-0 flex items-center gap-2">
                         {canPrint && (
                             <button

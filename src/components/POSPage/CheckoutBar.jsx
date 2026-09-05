@@ -40,10 +40,17 @@ export default function CheckoutBar({
                 {/* Ô bàn mở lưới bàn thay vì gõ tay: bàn là một tab còn mở nhiều đợt,
                     gõ lại tên mỗi đợt thì sai chính tả một lần là tách thành hai bàn.
                     Chỉ tên bàn — tổng đang chạy của bàn nằm trên thẻ trong lưới, để đây
-                    thì hai con số tiền cạnh nhau (tổng bàn vs tổng đợt) rất dễ đọc nhầm. */}
+                    thì hai con số tiền cạnh nhau (tổng bàn vs tổng đợt) rất dễ đọc nhầm.
+                    Ở dine-split, lưới bàn (.pos-table-pane, xem POSPage.jsx) đã hiện sẵn
+                    ngay cạnh — hỏi thẳng DOM có đang hiện nó không thay vì tự đoán lại
+                    breakpoint bằng một chuỗi media-query chép tay riêng, dễ lệch với
+                    @custom-variant dine-split (index.css) mỗi lần một bên đổi mà quên bên kia. */}
                 <button
                     type="button"
-                    onClick={() => setShowTables(true)}
+                    onClick={() => {
+                        const tablePane = document.querySelector('.pos-table-pane')
+                        if (getComputedStyle(tablePane).display === 'none') setShowTables(true)
+                    }}
                     className="min-w-[92px] shrink-0 ml-auto bg-surface-light border border-border/60 rounded-[12px] px-1.5 py-1.5 text-center focus:outline-none focus:border-primary/40 hover:border-primary/40 transition-colors"
                 >
                     {/* Không chọn bàn = mang đi, đó là một trạng thái thật chứ không phải

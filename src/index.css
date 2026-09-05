@@ -9,6 +9,23 @@
    hướng nào (phone landscape rộng vậy là rủi ro sẵn có từ trước, không mới). */
 @custom-variant dine-split (@media (min-width: 768px), @media (min-width: 650px) and (orientation: portrait));
 
+/* Layout lưới cho POSPage khi dineIn: 1 cột (menu trên, chốt đơn dưới) ở phone,
+   2 cột đều nhau (menu | bàn, chốt đơn dưới cột bàn) ở dine-split — xem POSPage.jsx.
+   Grid thay vì 2 flex-col tách rời để CheckoutBar chỉ cần mount MỘT lần, tự "nhảy"
+   chỗ theo breakpoint bằng grid-area thay vì phải render 2 bản rồi ẩn bớt (2 bản
+   thì 2 state độc lập — gập/mở Samsung Z Fold giữa lúc đang sửa giảm giá là mất
+   thao tác dở dang, xem comment breakpoint ở trên). */
+.pos-dine-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas: "left" "checkout";
+  @variant dine-split {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "left table" "left checkout";
+  }
+}
+
 @theme {
   /* KOPOS navy palette — bản UI: giữ hue brand (#01324c) nhưng tối + giảm bão hòa
      để card/chữ/primary nổi lên; màu brand gốc chỉ dùng cho logo & accent. */

@@ -87,62 +87,78 @@ export default function POSPage() {
         handleLoadHistory()
     }
 
+    const menuColumn = (
+        <>
+            <Header
+                isOnline={isOnline}
+                dayName={dayName}
+                dateOnly={dateOnly}
+                onOpenHistory={handleOpenHistory}
+                addressName={selectedAddress?.name}
+                onAddressClick={() => navigate(isGuest ? '/login' : '/addresses')}
+                recentOrders={recentOrders}
+                draftOrder={draftOrder}
+                enterKey={enterKey}
+                showOnboardingHint={showHistoryHint}
+                dineIn={dineIn}
+            />
+
+            <MenuGrid
+                products={products}
+                cart={cart}
+                activeItem={activeItem}
+                onAddItem={handleAddItem}
+                onCancelHeld={cancelHeld}
+                productExtras={productExtras}
+                onToggleExtra={handleToggleExtra}
+                enabledStickyExtraIds={enabledStickyExtraIds}
+                onToggleStickyExtra={handleToggleStickyExtra}
+                hintProductId={hintProductId}
+                hintExtraName={hintExtraName}
+                dineIn={dineIn}
+            />
+
+            <Toast toast={toast} />
+        </>
+    )
+
+    if (!dineIn) {
+        return (
+            <div className="flex flex-col h-full max-w-lg mx-auto bg-bg">
+                {menuColumn}
+            </div>
+        )
+    }
+
     // Bàn ngồi trên tablet/foldable (biến thể dine-split, xem index.css): chia đôi
     // màn hình — bên trái vẫn là POS như trên điện thoại, bên phải là lưới chọn bàn
-    // luôn hiện (TableModal inline, xem component đó) thay vì phải bấm mở modal.
-    // Không bật khi tắt Bàn ngồi hoặc trên điện thoại — layout đó giữ nguyên như cũ.
+    // luôn hiện (TableModal inline) thay vì phải bấm mở modal, và "Tạo đơn" nằm
+    // ngay dưới lưới đó thay vì dưới menu — đỡ một cú liếc chéo cột lúc chốt đơn.
+    // .pos-dine-grid (index.css) xếp 3 vùng: left (menu, y hệt điện thoại) | table |
+    // checkout — CheckoutBar CHỈ MOUNT MỘT LẦN, "nhảy" chỗ qua grid-area theo
+    // breakpoint thay vì phải render 2 bản (2 bản = 2 state độc lập, gập/mở
+    // Samsung Z Fold giữa lúc sửa giảm giá là mất thao tác dở dang).
     return (
-        <div className="flex h-full">
-            <div className={`flex flex-col h-full max-w-lg mx-auto bg-bg ${dineIn ? 'dine-split:max-w-none dine-split:flex-1 dine-split:mx-0 dine-split:border-r dine-split:border-border/80' : ''}`}>
-                <Header
-                    isOnline={isOnline}
-                    dayName={dayName}
-                    dateOnly={dateOnly}
-                    onOpenHistory={handleOpenHistory}
-                    addressName={selectedAddress?.name}
-                    onAddressClick={() => navigate(isGuest ? '/login' : '/addresses')}
-                    recentOrders={recentOrders}
-                    draftOrder={draftOrder}
-                    enterKey={enterKey}
-                    showOnboardingHint={showHistoryHint}
-                    dineIn={dineIn}
-                />
-
-                <MenuGrid
-                    products={products}
-                    cart={cart}
-                    activeItem={activeItem}
-                    onAddItem={handleAddItem}
-                    onCancelHeld={cancelHeld}
-                    productExtras={productExtras}
-                    onToggleExtra={handleToggleExtra}
-                    enabledStickyExtraIds={enabledStickyExtraIds}
-                    onToggleStickyExtra={handleToggleStickyExtra}
-                    hintProductId={hintProductId}
-                    hintExtraName={hintExtraName}
-                    dineIn={dineIn}
-                />
-
-                {dineIn && (
-                    <CheckoutBar
-                        discountAmount={discountAmount}
-                        finalTotal={finalTotal}
-                        cart={cart}
-                        onItemDiscount={setItemDiscount}
-                        tableName={tableName}
-                        onConfirm={handleConfirm}
-                        disabled={!hasOrder}
-                    />
-                )}
-
-                <Toast toast={toast} />
+        <div className="pos-dine-grid h-full">
+            <div className="[grid-area:left] flex flex-col h-full min-h-0 max-w-lg mx-auto bg-bg dine-split:max-w-none dine-split:mx-0 dine-split:border-r dine-split:border-border/80">
+                {menuColumn}
             </div>
 
-            {dineIn && (
-                <aside className="hidden dine-split:flex flex-col h-full flex-1 bg-bg">
-                    <TableModal inline />
-                </aside>
-            )}
+            <div className="pos-table-pane hidden dine-split:flex flex-col min-h-0 [grid-area:table] bg-bg">
+                <TableModal inline />
+            </div>
+
+            <div className="[grid-area:checkout]">
+                <CheckoutBar
+                    discountAmount={discountAmount}
+                    finalTotal={finalTotal}
+                    cart={cart}
+                    onItemDiscount={setItemDiscount}
+                    tableName={tableName}
+                    onConfirm={handleConfirm}
+                    disabled={!hasOrder}
+                />
+            </div>
         </div>
     )
 }

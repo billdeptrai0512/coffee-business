@@ -529,10 +529,17 @@ export async function fetchOpenTables(addressId: UUID | null): Promise<OpenTable
         .eq('address_id', addressId)
         .is('deleted_at', null)
         .is('table_closed_at', null)
-        // Bàn thật (table_name khác null) luôn lấy, bất kể served_at — đợt đã ra món vẫn
-        // phải hiện tới khi bàn tính tiền. Đơn mang đi (table_name null) chỉ lấy khi CHƯA
-        // ra món — ra món xong thì không còn gì để nhân viên theo dõi ở màn này nữa.
-        .or('table_name.not.is.null,served_at.is.null')
+        // Bàn thật (table_name khác null) luôn lấy, bất kể served_at HAY NGÀY TẠO — đợt
+        // đã ra món vẫn phải hiện tới khi bàn tính tiền, và bàn mở trước nửa đêm vẫn phải
+        // còn nguyên sau 0h. Đơn mang đi (table_name null) thì chỉ lấy khi CHƯA ra món VÀ
+        // tạo hôm nay — không chặn ngày ở đây thì địa chỉ vừa bật dine_in sẽ thấy nguyên
+        // lịch sử đơn mang đi TRƯỚC ĐÓ hiện ra là "chưa ra món" (served_at vốn luôn NULL ở
+        // chế độ takeaway cũ, vì nút Đã ra món chỉ tồn tại trong UI dine_in) — bắt được
+        // thật: 1 địa chỉ mới bật dine_in, hiện tới 1281 "món chưa ra" ngày đầu tiên. Cùng
+        // lý do đây còn là chốt chặn PostgREST trả tối đa 1000 dòng: bàn thật ít (vài chục,
+        // không lọc ngày cũng chẳng bao giờ chạm trần), mang đi thì giờ đã có sàn ngày nên
+        // không còn phình vô hạn qua nhiều ngày để chạm trần đó nữa.
+        .or(`table_name.not.is.null,and(served_at.is.null,created_at.gte.${startOfDayVN().toISOString()})`)
         .order('created_at', { ascending: true })
 
     // NÉM lỗi thay vì trả [] — mảng rỗng nghĩa là "không bàn nào còn khách", và người
