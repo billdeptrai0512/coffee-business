@@ -22,13 +22,30 @@ const PILL = 'shrink-0 bg-surface-light border border-border/60 rounded-full px-
 const PILL_LG = 'shrink-0 bg-surface-light border border-border/60 rounded-full px-2.5 py-1 text-[11px] font-bold text-text-secondary'
 
 export default function OrdersList({
-    orders, runningTotals, isLoading, isTodayScope,
+    orders, totalCups, totalRevenue, runningTotals, isLoading, isTodayScope,
     pendingOrders, isSyncing, onRetrySync, onDeleteOffline,
     onDeleteOrder, onUpdateDiscount, deletingId, setDeletingId,
     justArrivedIds, dineIn,
 }) {
     return (
         <main className="flex-1 overflow-y-auto px-4 py-5 pb-4 space-y-3 bg-bg">
+            {/* Card đầu danh sách — nằm trong luồng cuộn bình thường như mọi card khác,
+                chỉ cần luôn là item ĐẦU TIÊN nên đơn mới không bao giờ chèn lên trên nó. */}
+            <div className="bg-surface rounded-[24px] p-5 shadow-sm border border-border/60 flex items-start justify-between">
+                <div className="flex flex-col min-w-0 flex-1 mt-1">
+                    <span className="text-[12px] font-black text-text uppercase mb-1">Tổng cộng</span>
+                    <span className="text-[17px] font-bold text-primary tabular-nums leading-none truncate">
+                        {totalCups} ly
+                    </span>
+                </div>
+                <div className="flex flex-col items-end shrink-0 ml-3">
+                    <span className="text-[12px] font-black text-text uppercase mb-0.5">Doanh thu</span>
+                    <span className={`text-[17px] font-bold tabular-nums leading-none ${totalRevenue > 0 ? 'text-success' : 'text-text-secondary'}`}>
+                        {formatVND(totalRevenue || 0)}
+                    </span>
+                </div>
+            </div>
+
             {pendingOrders.length > 0 && (
                 <div className="bg-warning/10 border border-warning/40 rounded-[14px] px-4 py-3 flex items-center justify-between gap-3">
                     <div className="flex flex-col min-w-0">
@@ -212,7 +229,7 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
                             </div>
                             {!order.deletedAt && (
                                 <span className="shrink-0 text-success leading-none text-[14px] font-bold tabular-nums">
-                                    {formatVND(runningTotal)}
+                                    + {formatVND(order.total)}
                                 </span>
                             )}
                         </div>

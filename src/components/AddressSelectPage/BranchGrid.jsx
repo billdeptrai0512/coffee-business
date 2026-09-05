@@ -234,7 +234,7 @@ export default function BranchGrid({
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <ActionPill
                                                                 icon={<Banknote size={16} />}
-                                                                label="Thu nhập"
+                                                                label="Doanh thu"
                                                                 tone="primary"
                                                                 onClick={() => { onSelectHistory?.(addr, 'orders'); setExpandedActionsId(null) }}
                                                             />

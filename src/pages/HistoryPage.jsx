@@ -294,6 +294,10 @@ export default function HistoryPage() {
         }, 0)
     }, 0), [allOrders, productCountMap])
 
+    const totalRevenue = useMemo(() => allOrders.reduce((sum, o) => (
+        o.isExpense || o.deletedAt ? sum : sum + (o.total || 0)
+    ), 0), [allOrders])
+
     const runningTotals = useMemo(() => {
         const map = new Map()
         let cumulative = 0
@@ -451,6 +455,8 @@ export default function HistoryPage() {
             {activeTab === 'orders' && (
                 <OrdersList
                     orders={allOrders}
+                    totalCups={totalCups}
+                    totalRevenue={totalRevenue}
                     runningTotals={runningTotals}
                     isLoading={isTodayScope ? isLoadingHistory : isLoadingRangeOrders}
                     isTodayScope={isTodayScope}
