@@ -156,15 +156,6 @@ export default function TableModal({ onClose, inline = false }) {
     // close button which inline has no use for) differs.
     const inner = (
         <>
-            <div className="shrink-0 flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/40">
-                <p className="text-text font-black text-base leading-none">Chọn bàn</p>
-                {!inline && (
-                    <button onClick={onClose} className="p-1.5 text-text-secondary hover:text-text rounded-lg hover:bg-surface-light">
-                        <X size={16} />
-                    </button>
-                )}
-            </div>
-
             {/* Body */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 {orderCount > 0 && (
