@@ -127,8 +127,12 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
             return
         }
         await new Promise((resolve) => {
-            const done = () => { window.removeEventListener('afterprint', done); resolve() }
-            window.addEventListener('afterprint', done)
+            // Safety valve: WebView native (Capacitor, chưa cấu hình IP máy in) không đảm bảo
+            // bắn 'afterprint' sau window.print() — thiếu timeout thì Tính tiền treo vĩnh viễn,
+            // bàn không bao giờ đóng. Cùng pattern loadingValve ở AddressStatsContext.jsx.
+            // resolve() gọi 2 lần vô hại (Promise chỉ ăn lần đầu); { once } tự gỡ listener.
+            window.addEventListener('afterprint', resolve, { once: true })
+            setTimeout(resolve, 5000)
             billRef.current?.print()
         })
     }
