@@ -120,7 +120,7 @@ const ProductCard = memo(function ProductCard({ product, qty, onAdd, onCancel, h
 // Extras for the active (held) item. Inserted as a full-width grid item right
 // after the active card's row (see MenuGrid) so it pushes the cards below down
 // instead of covering them — no reflow holes regardless of column/row.
-function ExtrasPopover({ activeProductId, extras, activeItem, enabledStickyExtraIds, onToggleExtra, onToggleStickyExtra, hintExtraName }) {
+function ExtrasPopover({ activeProductId, extras, toppings, activeItem, enabledStickyExtraIds, onToggleExtra, onToggleStickyExtra, onToggleTopping, hintExtraName }) {
     const { sticky, normal } = useMemo(() => {
         const s = [], n = []
         for (const e of extras) (e.is_sticky ? s : n).push(e)
@@ -133,48 +133,42 @@ function ExtrasPopover({ activeProductId, extras, activeItem, enabledStickyExtra
     const ref = useRef(null)
     useEffect(() => { ref.current?.scrollIntoView({ block: 'nearest' }) }, [activeProductId])
 
+    const renderExtraButton = (ex, { on, onClick }) => {
+        const hintClass = hintClassFor(ex)
+        return (
+            <button
+                key={ex.id}
+                onClick={onClick}
+                className={`shrink-0 h-[34px] px-3 rounded-[10px] border font-bold text-[12px] whitespace-nowrap focus:outline-none transition-all shadow-sm uppercase flex items-center gap-1.5 ${on ? 'bg-warning/10 border-warning/50 text-warning' : 'bg-surface-light border-border/80 text-text-secondary hover:text-text'} ${hintClass}`}
+            >
+                {on && <span className="w-1.5 h-1.5 rounded-full bg-warning mb-[1px]" />}
+                {ex.name}
+            </button>
+        )
+    }
+
     return (
         <div ref={ref} className="col-span-2 bg-surface border border-border/80 rounded-[14px] shadow-xl shadow-black/10">
             <div className="w-full overflow-x-auto py-2.5 px-3 flex gap-2 items-center hide-scrollbar">
-                {sticky.map(ex => {
-                    const on = enabledStickyExtraIds.includes(ex.id)
-                    const hintClass = hintClassFor(ex)
-                    return (
-                        <button
-                            key={ex.id}
-                            onClick={() => onToggleStickyExtra(ex)}
-                            className={`shrink-0 h-[34px] px-3 rounded-[10px] border font-bold text-[12px] whitespace-nowrap focus:outline-none transition-all shadow-sm uppercase flex items-center gap-1.5 ${on ? 'bg-warning/10 border-warning/50 text-warning' : 'bg-surface-light border-border/80 text-text-secondary hover:text-text'} ${hintClass}`}
-                        >
-                            {on && <span className="w-1.5 h-1.5 rounded-full bg-warning mb-[1px]" />}
-                            {ex.name}
-                        </button>
-                    )
-                })}
+                {sticky.map(ex => renderExtraButton(ex, { on: enabledStickyExtraIds.includes(ex.id), onClick: () => onToggleStickyExtra(ex) }))}
 
                 {sticky.length > 0 && normal.length > 0 && (
                     <div className="w-px h-5 bg-border/40 shrink-0" />
                 )}
 
-                {normal.map(ex => {
-                    const on = activeItem?.extras.some(e => e.id === ex.id) || false
-                    const hintClass = hintClassFor(ex)
-                    return (
-                        <button
-                            key={ex.id}
-                            onClick={() => onToggleExtra(ex)}
-                            className={`shrink-0 h-[34px] px-3 rounded-[10px] border font-bold text-[12px] whitespace-nowrap focus:outline-none transition-all shadow-sm uppercase flex items-center gap-1.5 ${on ? 'bg-warning/10 border-warning/50 text-warning' : 'bg-surface-light border-border/80 text-text-secondary hover:text-text'} ${hintClass}`}
-                        >
-                            {on && <span className="w-1.5 h-1.5 rounded-full bg-warning mb-[1px]" />}
-                            {ex.name}
-                        </button>
-                    )
-                })}
+                {normal.map(ex => renderExtraButton(ex, { on: activeItem?.extras.some(e => e.id === ex.id) || false, onClick: () => onToggleExtra(ex) }))}
             </div>
+
+            {toppings.length > 0 && (
+                <div className="w-full overflow-x-auto pb-2.5 px-3 flex gap-2 items-center hide-scrollbar border-t border-border/40 pt-2">
+                    {toppings.map(tp => renderExtraButton(tp, { on: activeItem?.toppings.some(t => t.id === tp.id) || false, onClick: () => onToggleTopping(tp) }))}
+                </div>
+            )}
         </div>
     )
 }
 
-export default function MenuGrid({ products, cart, activeItem, onAddItem, onCancelHeld, productExtras, onToggleExtra, enabledStickyExtraIds = [], onToggleStickyExtra, hintProductId, hintExtraName = null, dineIn = false }) {
+export default function MenuGrid({ products, cart, activeItem, onAddItem, onCancelHeld, productExtras, productToppings, onToggleExtra, onToggleTopping, enabledStickyExtraIds = [], onToggleStickyExtra, hintProductId, hintExtraName = null, dineIn = false }) {
     const navigate = useNavigate()
     const { isManager, isAdmin } = useAuth()
     const { loading, loadError } = useProducts()
@@ -194,7 +188,8 @@ export default function MenuGrid({ products, cart, activeItem, onAddItem, onCanc
     // passed down, since POSPage needs the same value for onboarding progress tracking.
     const activeProductId = activeItem?.productId
     const activeExtras = productExtras?.[activeProductId] || []
-    const activeIdx = activeExtras.length > 0 ? products.findIndex(p => p.id === activeProductId) : -1
+    const activeToppings = productToppings?.[activeProductId] || []
+    const activeIdx = (activeExtras.length > 0 || activeToppings.length > 0) ? products.findIndex(p => p.id === activeProductId) : -1
     // Insert the extras bar after the END of the active card's row (its right-col
     // neighbour, or the card itself if it's right-col / last) so the full-width
     // span drops to a fresh row with no empty grid slot beside it.
@@ -266,10 +261,12 @@ export default function MenuGrid({ products, cart, activeItem, onAddItem, onCanc
                     key="extras"
                     activeProductId={activeProductId}
                     extras={activeExtras}
+                    toppings={activeToppings}
                     activeItem={activeItem}
                     enabledStickyExtraIds={enabledStickyExtraIds}
                     onToggleExtra={onToggleExtra}
                     onToggleStickyExtra={onToggleStickyExtra}
+                    onToggleTopping={onToggleTopping}
                     hintExtraName={hintExtraName}
                 />
             )
