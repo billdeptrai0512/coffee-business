@@ -228,7 +228,7 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
                                 )}
                             </div>
                             {!order.deletedAt && (
-                                <span className="shrink-0 text-success leading-none text-[14px] font-bold tabular-nums">
+                                <span className="shrink-0 text-primary leading-none text-[14px] font-bold tabular-nums">
                                     + {formatVND(order.total)}
                                 </span>
                             )}
