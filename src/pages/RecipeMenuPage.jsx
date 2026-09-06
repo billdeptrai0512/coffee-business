@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, X, Minus } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import {
     DndContext, DragOverlay, PointerSensor, KeyboardSensor,
     closestCenter, useSensor, useSensors,
@@ -172,9 +172,9 @@ export default function RecipeMenuPage() {
             else await updateProductName(dividerModal.id, name)
             refreshProducts?.()
             setDividerModal(null)
-            showToast(dividerModal.mode === 'create' ? 'Đã tạo mục' : 'Đã đổi tên mục', 'success')
+            showToast(dividerModal.mode === 'create' ? 'Đã tạo danh mục' : 'Đã đổi tên danh mục', 'success')
         } catch (err) {
-            showError(err, 'Lưu mục')
+            showError(err, 'Lưu danh mục')
         } finally {
             setSaving(false)
         }
@@ -186,9 +186,9 @@ export default function RecipeMenuPage() {
             await removeProductFromAddress(dividerModal.id, selectedAddress?.id)
             refreshProducts?.()
             setDividerModal(null)
-            showToast('Đã xóa mục', 'success')
+            showToast('Đã xóa danh mục', 'success')
         } catch (err) {
-            showError(err, 'Xóa mục')
+            showError(err, 'Xóa danh mục')
         } finally {
             setSaving(false)
         }
@@ -254,7 +254,19 @@ export default function RecipeMenuPage() {
                             onClick={() => { setDividerName(''); setDividerModal({ mode: 'create' }) }}
                             className="flex-1 flex items-center justify-center gap-1.5 rounded-[12px] bg-surface border border-dashed border-border text-text-secondary text-[12px] font-black uppercase tracking-widest hover:bg-surface-light active:scale-[0.98] transition-all"
                         >
-                            <Minus size={14} /> Tạo mục mới <Minus size={14} />
+                            Tạo danh mục
+                        </button>
+                        <button
+                            onClick={() => navigate('/toppings', { state: location.state })}
+                            className="shrink-0 px-3 rounded-[12px] flex items-center justify-center bg-surface border border-border/60 text-text-secondary text-[12px] font-black uppercase tracking-widest hover:bg-surface-light active:scale-[0.98] transition-all"
+                        >
+                            Topping
+                        </button>
+                        <button
+                            onClick={() => navigate('/import', { state: location.state })}
+                            className="shrink-0 px-3 rounded-[12px] flex items-center justify-center bg-surface border border-border/60 text-text-secondary text-[12px] font-black uppercase tracking-widest hover:bg-surface-light active:scale-[0.98] transition-all"
+                        >
+                            Excel
                         </button>
                         <button
                             onClick={() => setShowCreateModal(true)}
@@ -403,7 +415,7 @@ export default function RecipeMenuPage() {
                     panelClassName="w-full max-w-lg bg-surface rounded-t-[24px] border-t border-border/60 shadow-2xl p-5 pb-8 flex flex-col gap-4 animate-slide-up"
                 >
                         <div className="flex items-center justify-between">
-                            <span className="text-[16px] font-black text-text">{dividerModal.mode === 'create' ? 'Tạo mục' : 'Sửa mục'}</span>
+                            <span className="text-[16px] font-black text-text">{dividerModal.mode === 'create' ? 'Tạo danh mục' : 'Sửa danh mục'}</span>
                             <button
                                 onClick={() => setDividerModal(null)}
                                 disabled={saving}
@@ -412,14 +424,14 @@ export default function RecipeMenuPage() {
                                 <X size={16} />
                             </button>
                         </div>
-                        <p className="text-[13px] text-text-secondary -mt-2">Mục là dòng tiêu đề ——— tên ——— để phân nhóm menu trên trang bán hàng.</p>
+                        <p className="text-[13px] text-text-secondary -mt-2">Danh mục là dòng tiêu đề ——— tên ——— để phân nhóm menu trên trang bán hàng.</p>
                         <input
                             autoFocus
                             value={dividerName}
                             onChange={e => setDividerName(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') saveDivider() }}
                             disabled={saving}
-                            placeholder="Tên mục (vd: Cà phê, Trà, Topping)"
+                            placeholder="Tên danh mục (vd: Cà phê, Trà, Topping)"
                             className="w-full px-4 py-3 rounded-[12px] bg-bg border border-border/60 text-text text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-50"
                         />
                         <div className="flex gap-2">
@@ -429,7 +441,7 @@ export default function RecipeMenuPage() {
                                     disabled={saving}
                                     className="flex-1 py-3 rounded-[12px] bg-danger-soft text-danger font-black text-[14px] active:scale-95 transition-all disabled:opacity-50"
                                 >
-                                    Xóa mục
+                                    Xóa danh mục
                                 </button>
                             )}
                             <button
@@ -437,7 +449,7 @@ export default function RecipeMenuPage() {
                                 disabled={saving || !dividerName.trim()}
                                 className="flex-1 py-3 rounded-[12px] bg-primary text-bg font-black text-[14px] hover:bg-primary/90 active:bg-primary/80 transition-colors disabled:opacity-50"
                             >
-                                {dividerModal.mode === 'create' ? 'Tạo mục' : 'Lưu'}
+                                {dividerModal.mode === 'create' ? 'Tạo danh mục' : 'Lưu'}
                             </button>
                         </div>
                 </BottomSheet>

@@ -27,6 +27,9 @@ const RecipeIngredientPage = lazy(() => import('./pages/RecipeIngredientPage'))
 const DailyReportPage = lazy(() => import('./pages/DailyReportPage'))
 const IngredientManagementPage = lazy(() => import('./pages/IngredientManagementPage'))
 const IngredientDetailPage = lazy(() => import('./pages/IngredientDetailPage'))
+const ToppingsPage = lazy(() => import('./pages/ToppingsPage'))
+const ToppingDetailPage = lazy(() => import('./pages/ToppingDetailPage'))
+const ImportPage = lazy(() => import('./pages/ImportPage'))
 
 function PageLoading() {
   return (
@@ -135,6 +138,9 @@ export default function App() {
                           <Route path="/recipes/:productId" element={<RecipeIngredientPage />} />
                           <Route path="/ingredients" element={<IngredientManagementPage />} />
                           <Route path="/ingredients/:ingredientKey" element={<IngredientDetailPage />} />
+                          <Route path="/toppings" element={<ToppingsPage />} />
+                          <Route path="/toppings/:toppingId" element={<ToppingDetailPage />} />
+                          <Route path="/import" element={<ImportPage />} />
                         </Route>
                       </Route>
                     </Route>
