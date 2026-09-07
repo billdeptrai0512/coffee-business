@@ -21,6 +21,7 @@ import SortableItem from '../components/RecipeMenuPage/SortableItem'
 import RecipeMenuHeader from '../components/RecipeMenuPage/RecipeMenuHeader'
 import ProductCard from '../components/RecipeMenuPage/ProductCard'
 import CreateProductForm from '../components/RecipeMenuPage/CreateProductForm'
+import ExcelImportModal from '../components/RecipeMenuPage/ExcelImportModal'
 import { goToMenuStep } from '../utils/menuSequence'
 import { norm, findCoffeeIngredient, nextIngredientSetupField } from '../utils/onboardingHint'
 import { isRecipeProgressDone } from '../utils/onboardingStorage'
@@ -98,6 +99,7 @@ export default function RecipeMenuPage() {
     const [orderedProducts, setOrderedProducts] = useState(products)
     useEffect(() => { setOrderedProducts(products) }, [products])
     const [showCreateModal, setShowCreateModal] = useState(false)
+    const [showImportModal, setShowImportModal] = useState(false)
     // {mode:'create'} | {mode:'edit', id} — modal tạo/sửa mục (divider phân nhóm menu)
     const [dividerModal, setDividerModal] = useState(null)
     const [dividerName, setDividerName] = useState('')
@@ -263,12 +265,6 @@ export default function RecipeMenuPage() {
                             Topping
                         </button>
                         <button
-                            onClick={() => navigate('/import', { state: location.state })}
-                            className="shrink-0 px-3 rounded-[12px] flex items-center justify-center bg-surface border border-border/60 text-text-secondary text-[12px] font-black uppercase tracking-widest hover:bg-surface-light active:scale-[0.98] transition-all"
-                        >
-                            Excel
-                        </button>
-                        <button
                             onClick={() => setShowCreateModal(true)}
                             aria-label="Tạo công thức"
                             className="shrink-0 px-3 rounded-[12px] flex items-center justify-center bg-primary text-bg hover:bg-primary/90 active:scale-95 transition-all"
@@ -406,8 +402,16 @@ export default function RecipeMenuPage() {
                             onPriceChange={setNewProductPrice}
                             onSubmit={handleCreateProduct}
                         />
+                        <button
+                            onClick={() => { setShowCreateModal(false); setShowImportModal(true) }}
+                            className="text-[13px] text-primary/80 hover:text-primary font-medium text-center"
+                        >
+                            hoặc Nhập hàng loạt từ Excel →
+                        </button>
                 </BottomSheet>
             )}
+
+            {showImportModal && <ExcelImportModal onClose={() => setShowImportModal(false)} />}
 
             {dividerModal && (
                 <BottomSheet
