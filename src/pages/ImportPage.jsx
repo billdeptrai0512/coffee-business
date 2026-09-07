@@ -107,6 +107,18 @@ export default function ImportPage() {
                                     </div>
                                 )}
 
+                                {(result.plan.recipes.length > 0 || result.plan.toppingIngredients.length > 0 || result.plan.toppingLinks.length > 0) && (
+                                    <div className="space-y-1 bg-warning-soft border border-warning/20 rounded-[12px] p-3">
+                                        <p className="text-[12px] font-black text-warning uppercase">Lưu ý ghi đè</p>
+                                        {(result.plan.recipes.length > 0 || result.plan.toppingIngredients.length > 0) && (
+                                            <p className="text-[12px] text-warning">Công thức/Công thức Topping: dòng trùng đúng nguyên liệu đã có trong công thức sẽ bị ghi đè số lượng, không hỏi lại.</p>
+                                        )}
+                                        {result.plan.toppingLinks.length > 0 && (
+                                            <p className="text-[12px] text-warning">Topping áp dụng món: ghi đè TOÀN BỘ danh sách món của mỗi topping trong file — món cũ không có trong file sẽ bị gỡ liên kết.</p>
+                                        )}
+                                    </div>
+                                )}
+
                                 {result.blockingErrors.length > 0 && (
                                     <div className="space-y-1 bg-danger-soft border border-danger/20 rounded-[12px] p-3">
                                         <p className="text-[12px] font-black text-danger uppercase">Lỗi cần sửa trong file ({result.blockingErrors.length})</p>
