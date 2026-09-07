@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAddress } from '../contexts/AddressContext'
 import { useAuth } from '../contexts/AuthContext'
 import { ALL_TIER } from '../constants/monetization'
+import { onTabReturn } from '../utils/tabVisibility'
 
 // ─── Client kill switch (build-time) ─────────────────────────────────────────
 //   Master capability. Build với false → monetization TẮT CỨNG, không hỏi server.
@@ -59,7 +60,13 @@ export function useMonetizationEnabled() {
             } else setFlag(v)
         }
         loadServerFlag().then(apply(true))
-        return () => { cancelled = true; clearTimeout(retryId) }
+        // "Thử lại đúng 1 lần" ở trên chỉ cứu lần đọc đầu — hook này gắn ở các Provider
+        // mount 1 lần cho cả phiên (vd AddressStatsProvider bọc mọi route sau login),
+        // nên nếu cả 2 lần đó đều rớt mạng thì flag kẹt undefined/false SUỐT PHIÊN, không
+        // gì tự sửa (badge gói biến mất khỏi mọi card). Thêm onTabReturn để mỗi lần quay
+        // lại app là 1 cơ hội đọc lại, không cần đợi F5.
+        const offTabReturn = onTabReturn(() => loadServerFlag().then(apply(true)))
+        return () => { cancelled = true; clearTimeout(retryId); offTabReturn() }
     }, [])
 
     const loading = CLIENT_MONETIZATION_ENABLED && flag === undefined

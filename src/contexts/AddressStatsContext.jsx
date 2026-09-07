@@ -99,10 +99,14 @@ export function AddressStatsProvider() {
         // thì badge gói trên mọi card ẩn vĩnh viễn (BranchGrid gate bằng loading).
         const clearValve = loadingValve(setSubscriptionLoading)
         try {
-            const { statusMap, rowsMap } = await fetchSubscriptionStatuses(addresses.map(a => a.id))
+            const result = await fetchSubscriptionStatuses(addresses.map(a => a.id))
             if (cancelRef.current) return
-            setSubscriptionStatusMap(statusMap)
-            setSubscriptionRowsMap(rowsMap)
+            // null = lỗi mạng/RLS thoáng qua → giữ nguyên map cũ (không đè badge tốt
+            // thành sai); onTabReturn bên dưới sẽ tự thử lại lần quay về sau.
+            if (result) {
+                setSubscriptionStatusMap(result.statusMap)
+                setSubscriptionRowsMap(result.rowsMap)
+            }
         } finally {
             clearValve()
             setSubscriptionLoading(false)
@@ -113,8 +117,16 @@ export function AddressStatsProvider() {
 
     // Expose để SubscriptionPanel gọi lại sau Mock/Reset gói (admin) — làm tươi cả
     // rows (badge từng card + panel) lẫn status (thứ tự sort) trong 1 lần refetch.
+    //
+    // AddressStatsProvider mount 1 LẦN cho cả phiên (bọc mọi route sau login, xem
+    // App.jsx) — không như loadStats có setInterval 30s, hàm này trước đây chỉ
+    // chạy đúng 1 lần lúc mount. 1 lần rớt mạng lúc mới mở app (rất hay gặp trên máy
+    // POS bắt wifi quán) là badge sai SUỐT CẢ CA, không có gì tự sửa lại. Thêm
+    // onTabReturn (đúng pattern loadStats đã dùng ở dưới) để có cơ hội tự phục hồi
+    // mỗi lần quay lại app, không cần F5.
     useEffect(() => {
         loadSubscriptionStatuses()
+        return onTabReturn(loadSubscriptionStatuses)
     }, [addressIdsKey, monetizationEnabled, loadSubscriptionStatuses])
 
     const loadStaff = useCallback(async () => {

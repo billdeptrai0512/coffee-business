@@ -296,7 +296,9 @@ export async function fetchSubscriptionStatuses(addressIds) {
         .in('address_id', addressIds)
     if (error) {
         console.error('fetchSubscriptionStatuses error:', error)
-        return { statusMap: {}, rowsMap: {} }
+        // null (không phải map rỗng) → caller giữ nguyên map cũ thay vì đè badge tốt
+        // thành sai (giống loadStats giữ số cũ khi rớt mạng, xem AddressStatsContext.jsx).
+        return null
     }
     const rowsMap = {}
     ;(data || []).forEach(r => { (rowsMap[r.address_id] ??= []).push(r) })
