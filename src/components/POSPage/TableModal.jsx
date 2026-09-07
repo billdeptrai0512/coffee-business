@@ -86,7 +86,11 @@ export default function TableModal({ onClose, inline = false }) {
     // Bàn có thể vừa được mở/đóng ở máy khác — đồng bộ lại mỗi lần mở modal thay vì
     // nuôi thêm một kênh realtime. Component chỉ mount khi mở (xem CheckoutBar) nên
     // effect này = "mở modal", và lúc đóng không còn render rỗng ăn theo mỗi cú chạm món.
-    useEffect(() => { refreshTables() }, [refreshTables])
+    // inline (tablet, POSPage) thì KHÔNG mount-khi-mở — nó sống suốt vòng đời /pos và
+    // POSContext đã tự refreshTables lúc đó rồi (xem effect dineIn/isPosPage ở đó); bắn
+    // thêm 1 request y hệt ngay lúc mount chỉ là 2 response đua nhau, cái về sau có thể
+    // đè cái mới hơn.
+    useEffect(() => { if (!inline) refreshTables() }, [inline, refreshTables])
 
     const canEdit = isManager || isAdmin
     // Set: tên bàn là React key, danh sách trùng tên (ghi tay vào DB) sẽ làm hỏng lưới.
