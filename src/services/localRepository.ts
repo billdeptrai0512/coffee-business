@@ -16,6 +16,9 @@ const KEYS = {
     INGREDIENT_COSTS: 'guest_ingredient_costs',
     PRODUCT_EXTRAS: 'guest_product_extras',
     EXTRA_INGREDIENTS: 'guest_extra_ingredients',
+    TOPPINGS: 'guest_toppings',
+    TOPPING_INGREDIENTS: 'guest_topping_ingredients',
+    PRODUCT_TOPPINGS: 'guest_product_toppings',
     ORDERS: 'guest_orders',
     EXPENSES: 'guest_expenses',
     SHIFT_CLOSINGS: 'guest_shift_closings',
@@ -804,4 +807,96 @@ export const deleteLocalExtraIngredient = (extraId: string, ingredient: string) 
     extraIngs = extraIngs.filter(i => !(i.extra_id === extraId && i.ingredient === ingredient));
     set(KEYS.EXTRA_INGREDIENTS, extraIngs);
     return true;
+};
+
+// --- Toppings (thực thể toàn cục, gắn nhiều món qua PRODUCT_TOPPINGS) ---
+
+export const fetchLocalToppings = (addressId: string | null) => {
+    const list = get(KEYS.TOPPINGS).filter(t => t.address_id === addressId);
+    list.sort((a, b) => {
+        const aSort = a.sort_order ?? 999999;
+        const bSort = b.sort_order ?? 999999;
+        if (aSort !== bSort) return aSort - bSort;
+        return (a.name || '').localeCompare(b.name || '');
+    });
+    return list;
+};
+
+export const insertLocalTopping = (payload: Row) => {
+    const toppings = get(KEYS.TOPPINGS);
+    const maxSort = toppings.filter(t => t.address_id === payload.address_id).reduce((max: number, t) => Math.max(max, t.sort_order || -1), -1);
+    const newTopping = { id: generateId(), sort_order: maxSort + 1, ...payload };
+    toppings.push(newTopping);
+    set(KEYS.TOPPINGS, toppings);
+    return newTopping;
+};
+
+export const updateLocalToppingName = (toppingId: string, name: string) => {
+    const toppings = get(KEYS.TOPPINGS);
+    const t = toppings.find(t => t.id === toppingId);
+    if (t) { t.name = name; set(KEYS.TOPPINGS, toppings); }
+};
+
+export const updateLocalToppingPrice = (toppingId: string, price: number) => {
+    const toppings = get(KEYS.TOPPINGS);
+    const t = toppings.find(t => t.id === toppingId);
+    if (t) { t.price = price; set(KEYS.TOPPINGS, toppings); }
+};
+
+export const deleteLocalTopping = (toppingId: string) => {
+    let toppings = get(KEYS.TOPPINGS);
+    toppings = toppings.filter(t => t.id !== toppingId);
+    set(KEYS.TOPPINGS, toppings);
+
+    let toppingIngs = get(KEYS.TOPPING_INGREDIENTS);
+    toppingIngs = toppingIngs.filter(i => i.topping_id !== toppingId);
+    set(KEYS.TOPPING_INGREDIENTS, toppingIngs);
+
+    let links = get(KEYS.PRODUCT_TOPPINGS);
+    links = links.filter(l => l.topping_id !== toppingId);
+    set(KEYS.PRODUCT_TOPPINGS, links);
+    return true;
+};
+
+export const fetchLocalToppingIngredients = (toppingIds: string[] | null = null) => {
+    let list = get(KEYS.TOPPING_INGREDIENTS);
+    if (toppingIds) list = list.filter(i => toppingIds.includes(i.topping_id));
+    const map: Record<string, Row[]> = {};
+    for (const row of list) {
+        if (!map[row.topping_id]) map[row.topping_id] = [];
+        map[row.topping_id].push(row);
+    }
+    return map;
+};
+
+export const upsertLocalToppingIngredient = (payload: Row) => {
+    const toppingIngs = get(KEYS.TOPPING_INGREDIENTS);
+    const idx = toppingIngs.findIndex(i => i.topping_id === payload.topping_id && i.ingredient === payload.ingredient);
+    if (idx >= 0) {
+        toppingIngs[idx] = { ...toppingIngs[idx], ...payload };
+    } else {
+        toppingIngs.push({ id: generateId(), ...payload });
+    }
+    set(KEYS.TOPPING_INGREDIENTS, toppingIngs);
+};
+
+export const deleteLocalToppingIngredient = (toppingId: string, ingredient: string) => {
+    let toppingIngs = get(KEYS.TOPPING_INGREDIENTS);
+    toppingIngs = toppingIngs.filter(i => !(i.topping_id === toppingId && i.ingredient === ingredient));
+    set(KEYS.TOPPING_INGREDIENTS, toppingIngs);
+    return true;
+};
+
+export const fetchLocalProductToppingLinks = (toppingIds: string[]) => {
+    const links = get(KEYS.PRODUCT_TOPPINGS);
+    return links.filter(l => toppingIds.includes(l.topping_id));
+};
+
+export const setLocalToppingProductLinks = (toppingId: string, productIds: string[]) => {
+    let links = get(KEYS.PRODUCT_TOPPINGS);
+    links = links.filter(l => l.topping_id !== toppingId);
+    for (const productId of productIds) {
+        links.push({ id: generateId(), product_id: productId, topping_id: toppingId });
+    }
+    set(KEYS.PRODUCT_TOPPINGS, links);
 };

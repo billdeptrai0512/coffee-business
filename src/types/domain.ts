@@ -8,13 +8,17 @@ export type UUID = string
 // `Record` keeps call sites honest about "unknown shape" instead of pretending via `any`.
 export type Row = Record<string, any>
 
-/** An extra/topping selected on a cart line (mirrors the `extras` table shape used in the cart). */
+/** An extra option (size/đường/đá...) selected on a cart line — a `product_extras` row. */
 export interface CartExtra {
     id: string
     name: string
     price: number
     is_sticky?: boolean
 }
+
+/** A topping selected on a cart line — a `toppings` row (global entity, own id space,
+ *  attached to many products via `product_toppings`; separate from CartExtra). */
+export type CartTopping = Omit<CartExtra, 'is_sticky'>
 
 /** A single line in the POS cart (see POSContext.handleAddItem). */
 export interface CartItem {
@@ -24,9 +28,11 @@ export interface CartItem {
     basePrice: number
     quantity: number
     extras: CartExtra[]
+    toppings: CartTopping[]
     /** Present only on enriched offline-queue items. */
     unitCost?: number
     extraIds?: string[]
+    toppingIds?: string[]
     /** Per-line discount, set via the cart list's per-item discount modal. */
     discount?: Discount
 }
@@ -51,6 +57,7 @@ export interface OrderItemPayload {
     product_id: UUID
     quantity: number
     extra_ids: string[]
+    topping_ids: string[]
     /** Resolved đ giảm cho riêng dòng này — cùng dạng resolved-amount như
      *  OrderPayload.discount_amount, không phải %/đ đã chọn lúc áp. */
     discount_amount?: number

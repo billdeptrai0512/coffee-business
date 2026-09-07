@@ -64,3 +64,17 @@ export function getIngredientUnit(key, storedUnit, ingredientUnits) {
     if (key === 'orange') return 'quả';
     return storedUnit || ingredientUnits?.[key] || 'đv';
 }
+
+// Dùng chung bởi "thêm nguyên liệu mới" của công thức món (RecipeIngredientPage) và công
+// thức topping (ToppingDetailPage): với mỗi { key, unit, category } trong toAdd (unit=null
+// = chọn từ danh sách có sẵn, unit khác null = gõ tên mới qua IngredientPicker), đăng ký
+// ingredient_costs cho nguyên liệu THẬT SỰ mới (còn thiếu cost) rồi trả về các key chưa có
+// trong công thức hiện tại — caller tự upsert (batch hay từng dòng) + chèn vào state.
+export async function registerNewIngredients(toAdd, { existingKeys, ingredientCosts, addressId, upsertIngredientCost }) {
+    for (const { key, unit, category } of toAdd) {
+        if (unit !== null && !(key in ingredientCosts)) {
+            await upsertIngredientCost(key, 0, addressId, unit, category ? { category } : {})
+        }
+    }
+    return toAdd.filter(t => !existingKeys.has(t.key))
+}

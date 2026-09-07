@@ -21,11 +21,11 @@ export default function POSPage() {
     const navigate = useNavigate()
     const location = useLocation()
     const { isGuest } = useAuth()
-    const { products, productExtras } = useProducts()
+    const { products, productExtras, productToppings } = useProducts()
     const { selectedAddress } = useAddress()
     const {
         cart, activeCartItemId,
-        handleAddItem, cancelHeld, handleToggleExtra,
+        handleAddItem, cancelHeld, handleToggleExtra, handleToggleTopping,
         toast, recentOrders, draftOrder, enterKey,
         enabledStickyExtraIds,
         handleToggleStickyExtra,
@@ -110,7 +110,9 @@ export default function POSPage() {
                 onAddItem={handleAddItem}
                 onCancelHeld={cancelHeld}
                 productExtras={productExtras}
+                productToppings={productToppings}
                 onToggleExtra={handleToggleExtra}
+                onToggleTopping={handleToggleTopping}
                 enabledStickyExtraIds={enabledStickyExtraIds}
                 onToggleStickyExtra={handleToggleStickyExtra}
                 hintProductId={hintProductId}

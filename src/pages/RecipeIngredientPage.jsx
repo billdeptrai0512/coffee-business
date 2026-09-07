@@ -27,7 +27,7 @@ import {
     upsertIngredientCost,
     deleteRecipeRow,
 } from '../services/orderService'
-import { sortIngredients, getIngredientUnit, normalizeIngredientCategory } from '../utils/ingredients'
+import { sortIngredients, getIngredientUnit, normalizeIngredientCategory, registerNewIngredients } from '../utils/ingredients'
 import { useToast } from '../hooks/useToast'
 import { useConfirm } from '../contexts/ConfirmContext'
 import Toast from '../components/POSPage/Toast'
@@ -232,21 +232,16 @@ export default function RecipeIngredientPage() {
             // when it's not yet in this recipe, and only register a cost row when it's
             // brand-new — else "Tạo mới" typed with an existing name would zero its amount
             // and (worse) its shared unit cost.
-            const newToRecipe = toAdd.filter(({ key }) => !prodRecipes.some(r => r.ingredient === key))
-            if (newToRecipe.length) {
-                await upsertRecipes(newToRecipe.map(({ key, unit }) => ({ productId, ingredient: key, amount: 0, addressId: selectedAddress?.id, unit })))
-            }
-            for (const { key, unit, category } of toAdd) {
-                if (unit !== null && !(key in ingredientCosts)) {
-                    await upsertIngredientCost(key, 0, selectedAddress?.id, unit, category ? { category } : {})
-                }
+            const existingKeys = new Set(prodRecipes.map(r => r.ingredient))
+            const fresh = await registerNewIngredients(toAdd, { existingKeys, ingredientCosts, addressId: selectedAddress?.id, upsertIngredientCost })
+            if (fresh.length) {
+                await upsertRecipes(fresh.map(({ key, unit }) => ({ productId, ingredient: key, amount: 0, addressId: selectedAddress?.id, unit })))
             }
             setRecipes(prev => {
                 const present = new Set(prev.filter(r => r.product_id === productId).map(r => r.ingredient))
-                const fresh = toAdd.filter(t => !present.has(t.key))
                 return [
                     ...prev,
-                    ...fresh.map(({ key, unit }) => ({
+                    ...toAdd.filter(t => !present.has(t.key)).map(({ key, unit }) => ({
                         product_id: productId, ingredient: key, amount: 0,
                         unit: unit || getIngredientUnit(key),
                     })),

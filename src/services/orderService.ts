@@ -6,6 +6,7 @@
 //   - ingredientStockService  (warehouse/counter stock reads)
 //   - restockService          (restock/adjustment mutations, key sync)
 //   - reportService           (shift_closings, daily/range reports, history)
+//   - toppingService          (toppings, topping_ingredients, product_toppings)
 //
 // Existing call sites still import everything from `services/orderService` —
 // the barrel re-exports at the bottom keep that working. Prefer the focused
@@ -103,6 +104,7 @@ const ORDER_SELECT = `
         product_id,
         unit_cost,
         extra_ids,
+        topping_ids,
         discount_amount,
         products (
             name
@@ -208,8 +210,10 @@ export async function submitOrder(
                 id: crypto.randomUUID(),
                 product_id: item.productId,
                 quantity: item.quantity,
-                options: item.extras?.length > 0 ? item.extras.map(e => e.name).join(', ') : null,
+                options: [...(item.extras || []), ...(item.toppings || [])].map(e => e.name).join(', ') || null,
                 unit_cost: Math.round(costPerItem[item.cartItemId] || 0),
+                extra_ids: item.extras?.map(e => e.id).filter(Boolean) || [],
+                topping_ids: item.toppings?.map(t => t.id).filter(Boolean) || [],
                 discount_amount: lineDiscountAmount(item)
             }))
         })
@@ -232,6 +236,7 @@ export async function submitOrder(
             product_id: item.productId,
             quantity: item.quantity,
             extra_ids: item.extras?.length > 0 ? item.extras.map(e => e.id).filter(Boolean) : [],
+            topping_ids: item.toppings?.length > 0 ? item.toppings.map(t => t.id).filter(Boolean) : [],
             discount_amount: lineDiscountAmount(item)
         }))
     }
@@ -268,7 +273,7 @@ export async function bulkSubmitOrders(ordersArray: any[]): Promise<boolean> {
             order_items: (o.orderItems || []).map((item: any) => ({
                 product_id: item.productId,
                 quantity: item.quantity,
-                options: item.extras?.length > 0 ? item.extras.map((e: any) => e.name).join(', ') : null,
+                options: [...(item.extras || []), ...(item.toppings || [])].map((e: any) => e.name).join(', ') || null,
                 unit_cost: Math.round(item.unitCost || 0),
                 discount_amount: lineDiscountAmount(item),
             })),
@@ -293,6 +298,7 @@ export async function bulkSubmitOrders(ordersArray: any[]): Promise<boolean> {
             product_id: item.productId,
             quantity: item.quantity,
             extra_ids: item.extras?.length > 0 ? item.extras.map((e: any) => e.id).filter(Boolean) : (item.extraIds || []).filter(Boolean),
+            topping_ids: item.toppings?.length > 0 ? item.toppings.map((t: any) => t.id).filter(Boolean) : (item.toppingIds || []).filter(Boolean),
             discount_amount: lineDiscountAmount(item)
         }))
     }))
@@ -421,7 +427,7 @@ export async function fetchRecentOrders(addressId: UUID | null, limit = 3): Prom
 // vẫn làm ở Nhật ký). Nhờ vậy TableModal/moveTableRounds/toggleServed dùng lại nguyên logic
 // "một bàn" cho cả mang đi, không cần state/fetch riêng.
 export type TableLine = { name: string; qty: number }
-export type TableRoundItem = { productId: UUID; qty: number; extraIds: UUID[]; discountAmount: number }
+export type TableRoundItem = { productId: UUID; qty: number; extraIds: UUID[]; toppingIds: UUID[]; discountAmount: number }
 export type TableRound = { id: UUID; orderNo: number | null; createdAt: string; total: number; discountAmount: number; servedAt: string | null; staffName: string | null; lines: TableLine[]; items: TableRoundItem[] }
 export type OpenTable = { name: string | null; total: number; rounds: TableRound[]; openedAt: string; lines: TableLine[] }
 
@@ -525,7 +531,7 @@ export async function fetchOpenTables(addressId: UUID | null): Promise<OpenTable
 
     const { data, error } = await supabase
         .from('orders')
-        .select('id, order_no, total, discount_amount, created_at, served_at, staff_name, table_name, order_items(quantity, options, product_id, extra_ids, discount_amount, products(name))')
+        .select('id, order_no, total, discount_amount, created_at, served_at, staff_name, table_name, order_items(quantity, options, product_id, extra_ids, topping_ids, discount_amount, products(name))')
         .eq('address_id', addressId)
         .is('deleted_at', null)
         .is('table_closed_at', null)
@@ -563,7 +569,7 @@ export async function fetchOpenTables(addressId: UUID | null): Promise<OpenTable
             staffName: o.staff_name ?? null,
             lines: roundLines,
             items: (o.order_items || []).map((i: any) => ({
-                productId: i.product_id, qty: i.quantity, extraIds: i.extra_ids || [], discountAmount: i.discount_amount || 0,
+                productId: i.product_id, qty: i.quantity, extraIds: i.extra_ids || [], toppingIds: i.topping_ids || [], discountAmount: i.discount_amount || 0,
             })),
         })
         t.lines = mergeTableLines(t.lines, roundLines)
@@ -637,3 +643,4 @@ export * from './ingredientCostService'
 export * from './ingredientStockService'
 export * from './restockService'
 export * from './reportService'
+export * from './toppingService'

@@ -37,7 +37,7 @@ function mergeFetchedOrders(prev, fetchedOrders) {
 }
 
 export function POSProvider() {
-    const { products, recipes, ingredientCosts, extraIngredients, productExtras } = useProducts()
+    const { products, recipes, ingredientCosts, extraIngredients, productExtras, productToppings } = useProducts()
     const { selectedAddress } = useAddress()
     const { profile, isGuest, hasSession } = useAuth()
     const addressId = selectedAddress?.id
@@ -521,8 +521,8 @@ export function POSProvider() {
 
     // ---- Derived values ----
     const total = cart.reduce((sum, item) => {
-        const extrasPrice = item.extras.reduce((extraSum, ex) => extraSum + ex.price, 0)
-        return sum + (item.basePrice + extrasPrice) * item.quantity
+        const addonsPrice = [...item.extras, ...(item.toppings || [])].reduce((s, e) => s + e.price, 0)
+        return sum + (item.basePrice + addonsPrice) * item.quantity
     }, 0)
 
     const orderCount = cart.reduce((sum, item) => sum + item.quantity, 0)
@@ -550,14 +550,18 @@ export function POSProvider() {
         if (!cartItems || cartItems.length === 0) return
 
         const costPerItem = {}
+        // ponytail: giá vốn optimistic chỉ tính recipe món + extra_ingredients, CHƯA cộng
+        // topping_ingredients — server (bulk_create_orders) mới là nguồn thật, số này tự
+        // sửa lại khi đơn thật echo về qua postgres_changes. Thêm nếu cần hiển thị đúng
+        // ngay lúc optimistic.
         const cartCost = cartItems.reduce((sum, item) => {
             const c = calculateProductCost(item.productId, item.extras || [], recipes, extraIngredients, ingredientCosts)
             costPerItem[item.cartItemId] = c
             return sum + c * item.quantity
         }, 0)
         const itemTotal = cartItems.reduce((sum, item) => {
-            const extrasPrice = item.extras.reduce((s, e) => s + e.price, 0)
-            return sum + (item.basePrice + extrasPrice) * item.quantity
+            const addonsPrice = [...item.extras, ...(item.toppings || [])].reduce((s, e) => s + e.price, 0)
+            return sum + (item.basePrice + addonsPrice) * item.quantity
         }, 0)
         const countableQty = cartItems.reduce((sum, item) => {
             const prod = products?.find(p => p.id === item.productId)
@@ -595,13 +599,15 @@ export function POSProvider() {
         if (dineInRef.current) setOpenTables(prev => {
             // Cùng dạng nhãn như fetchOpenTables (tên món kèm topping).
             const addLines = mergeTableLines([], cartItems.map(it => ({
-                name: tableLineName(it.name, (it.extras || []).map(e => e.name)),
+                name: tableLineName(it.name, [...(it.extras || []), ...(it.toppings || [])].map(e => e.name)),
                 qty: it.quantity,
             })))
             const addRound = {
                 id: orderId, createdAt: addedRow.createdAt, total: netTotal, servedAt: null, lines: addLines,
                 items: cartItems.map(it => ({
-                    productId: it.productId, qty: it.quantity, extraIds: (it.extras || []).map(e => e.id).filter(Boolean),
+                    productId: it.productId, qty: it.quantity,
+                    extraIds: (it.extras || []).map(e => e.id).filter(Boolean),
+                    toppingIds: (it.toppings || []).map(t => t.id).filter(Boolean),
                 })),
             }
             const i = prev.findIndex(t => t.name === tableNameArg)
@@ -643,10 +649,11 @@ export function POSProvider() {
                     // ai bấm sửa giảm giá đúng lúc đơn còn đang optimistic.
                     id: item.cartItemId,
                     quantity: item.quantity,
-                    options: item.extras?.length ? item.extras.map(e => e.name).join(', ') : null,
+                    options: [...(item.extras || []), ...(item.toppings || [])].map(e => e.name).join(', ') || null,
                     product_id: item.productId,
                     unit_cost: Math.round(costPerItem[item.cartItemId] || 0),
                     extra_ids: item.extras?.map(e => e.id).filter(Boolean) || [],
+                    topping_ids: item.toppings?.map(t => t.id).filter(Boolean) || [],
                     discount_amount: computeDiscount(cartLineSubtotal(item), item.discount || NO_DISCOUNT).discountAmount,
                     products: { name: item.name },
                 })),
@@ -659,7 +666,7 @@ export function POSProvider() {
                         // committed it before the response was lost, the retry is a no-op
                         // (ON CONFLICT) instead of creating a duplicate order.
                         addPendingOrder(
-                            cartItems.map(item => ({ ...item, unitCost: costPerItem[item.cartItemId] || 0, extraIds: item.extras.map(e => e.id).filter(Boolean) })),
+                            cartItems.map(item => ({ ...item, unitCost: costPerItem[item.cartItemId] || 0, extraIds: item.extras.map(e => e.id).filter(Boolean), toppingIds: item.toppings.map(t => t.id).filter(Boolean) })),
                             netTotal, null, addressId, cartCost, profile?.name, discountApplied, orderId, tableNameArg
                         )
                         setTodayOrders(prev => prev.filter(o => o !== optimisticOrder)) // offline pending list shows it instead
@@ -683,7 +690,7 @@ export function POSProvider() {
                 })
         } else {
             addPendingOrder(
-                cartItems.map(item => ({ ...item, unitCost: costPerItem[item.cartItemId] || 0, extraIds: item.extras.map(e => e.id) })),
+                cartItems.map(item => ({ ...item, unitCost: costPerItem[item.cartItemId] || 0, extraIds: item.extras.map(e => e.id), toppingIds: item.toppings.map(t => t.id) })),
                 netTotal, null, addressId, cartCost, profile?.name, discountApplied, null, tableNameArg
             )
             showToast(`Lưu offline (${getPendingCount()} đơn chờ)`, 'warning')
@@ -715,7 +722,7 @@ export function POSProvider() {
 
         const cartItemId = crypto.randomUUID()
         const stickyExtras = (productExtras[product.id] || []).filter(e => e.is_sticky && enabledStickyExtraIdsRef.current.includes(e.id))
-        const newItem = { cartItemId, productId: product.id, name: product.name, basePrice: product.price, quantity: 1, extras: [...stickyExtras] }
+        const newItem = { cartItemId, productId: product.id, name: product.name, basePrice: product.price, quantity: 1, extras: [...stickyExtras], toppings: [] }
         // Update cartRef SYNCHRONOUSLY (not just via the [cart] effect) so a very
         // fast next tap reads this held item and submits it — otherwise the effect
         // lags one frame and the item can be overwritten unsubmitted (lost order).
@@ -833,6 +840,22 @@ export function POSProvider() {
         setCart(next)
     }, [])
 
+    // Topping: thực thể toàn cục (không phải product_extras) — không có bản sticky,
+    // luôn bắt đầu tắt. Mirror y hệt handleToggleExtra, chỉ đổi mảng toppings.
+    const handleToggleTopping = useCallback((topping) => {
+        const prev = cartRef.current
+        if (prev.length === 0) return
+        let idx = prev.findIndex(item => item.cartItemId === activeCartItemIdRef.current)
+        if (idx === -1) idx = prev.length - 1
+        const target = prev[idx]
+        const hasTopping = target.toppings.some(t => t.id === topping.id)
+        const newToppings = hasTopping ? target.toppings.filter(t => t.id !== topping.id) : [...target.toppings, topping]
+        const next = [...prev]
+        next[idx] = { ...target, toppings: newToppings }
+        cartRef.current = next
+        setCart(next)
+    }, [])
+
     async function handleLoadHistory() {
         if (!addressId) return
         // Freshness guard: dedup truly-simultaneous re-invocations (React re-render
@@ -918,6 +941,7 @@ export function POSProvider() {
                 basePrice: p.price,
                 quantity: it.qty,
                 extras: (productExtras[p.id] || []).filter(e => it.extraIds.includes(e.id)),
+                toppings: (productToppings[p.id] || []).filter(t => (it.toppingIds || []).includes(t.id)),
             })
         }
         // Xoá hỏng thì DỪNG: nạp giỏ lúc đợt cũ còn nguyên là nhân đôi đơn của khách.
@@ -1053,7 +1077,7 @@ export function POSProvider() {
     // so this is no worse and slices keep change frequencies separated.)
     const cartValue = useMemo(() => ({
         cart, activeCartItemId,
-        handleAddItem, cancelHeld, handleToggleExtra, handleToggleStickyExtra, commitHeld, reopenRoundIntoCart,
+        handleAddItem, cancelHeld, handleToggleExtra, handleToggleStickyExtra, handleToggleTopping, commitHeld, reopenRoundIntoCart,
         setItemDiscount,
         dineIn, handleConfirm, tableName, setTableName,
         openTables, refreshTables, handleCloseTable, toggleServed, moveTableRounds,

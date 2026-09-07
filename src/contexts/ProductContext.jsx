@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { fetchProducts, fetchAllRecipes, fetchIngredientCostsAndUnits, fetchProductExtras, fetchExtraIngredients } from '../services/orderService'
+import { fetchToppings, fetchProductToppingLinks } from '../services/toppingService'
 import { useAuth } from './AuthContext'
 import { useAddress } from './AddressContext'
 import { supabase } from '../lib/supabaseClient'
@@ -13,19 +14,37 @@ const ProductContext = createContext(null)
 // the app (remounting ProductProvider) to recover — nothing else retried it.
 // Bounded retry (same pattern as AuthContext's profile fetch) absorbs a
 // transient failure without user intervention.
+// toppings là thực thể toàn cục (không product_id) — dựng map productId -> Topping[]
+// từ bảng nối product_toppings để POS/MenuGrid dùng y hệt cách đọc productExtras.
+function buildProductToppingsMap(toppings, links) {
+    const byId = new Map(toppings.map(t => [t.id, t]))
+    const map = {}
+    for (const link of links) {
+        const topping = byId.get(link.topping_id)
+        if (!topping) continue
+        if (!map[link.product_id]) map[link.product_id] = []
+        map[link.product_id].push(topping)
+    }
+    return map
+}
+
 async function fetchProductDataWithRetry(addressId, attempts = 3, delayMs = 800) {
     let lastError
     for (let i = 0; i < attempts; i++) {
         try {
-            const [prods, recs, costsResult, extras] = await Promise.all([
+            const [prods, recs, costsResult, extras, toppings] = await Promise.all([
                 fetchProducts(addressId),
                 fetchAllRecipes(addressId),
                 fetchIngredientCostsAndUnits(addressId),
                 fetchProductExtras(addressId),
+                fetchToppings(addressId),
             ])
             const extraIds = Object.values(extras).flat().map(e => e.id)
-            const extraIngs = await fetchExtraIngredients(extraIds)
-            return { prods, recs, costsResult, extras, extraIngs }
+            const [extraIngs, toppingLinks] = await Promise.all([
+                fetchExtraIngredients(extraIds),
+                fetchProductToppingLinks(toppings.map(t => t.id)),
+            ])
+            return { prods, recs, costsResult, extras, extraIngs, toppings, productToppings: buildProductToppingsMap(toppings, toppingLinks) }
         } catch (error) {
             lastError = error
             if (i < attempts - 1) await new Promise(res => setTimeout(res, delayMs))
@@ -64,11 +83,13 @@ export function ProductProvider() {
     const [ingredientConfigs, setIngredientConfigs] = useState(() => readCache('configs', []))
     const [productExtras, setProductExtras] = useState(() => readCache('extras', {}))
     const [extraIngredients, setExtraIngredients] = useState(() => readCache('extra_ingredients', {}))
+    const [toppings, setToppings] = useState(() => readCache('toppings', []))
+    const [productToppings, setProductToppings] = useState(() => readCache('product_toppings', {}))
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState(null)
     const loadGenRef = useRef(0) // bumped each effect run so a stale retry can no-op instead of writing over a newer address's data
 
-    const applyData = useCallback((prods, recs, costsResult, extras, extraIngs, addressId) => {
+    const applyData = useCallback((prods, recs, costsResult, extras, extraIngs, addressId, toppingsList, productToppingsMap) => {
         const { costs, units, rows } = costsResult
         setProducts(prods)
         setRecipes(recs)
@@ -77,6 +98,8 @@ export function ProductProvider() {
         setIngredientConfigs(rows || [])
         setProductExtras(extras)
         setExtraIngredients(extraIngs)
+        setToppings(toppingsList)
+        setProductToppings(productToppingsMap)
         try {
             const key = (name) => buildCacheKey(addressId || 'default', name)
             localStorage.setItem(key('products'), JSON.stringify(prods))
@@ -86,6 +109,8 @@ export function ProductProvider() {
             localStorage.setItem(key('configs'), JSON.stringify(rows || []))
             localStorage.setItem(key('extras'), JSON.stringify(extras))
             localStorage.setItem(key('extra_ingredients'), JSON.stringify(extraIngs))
+            localStorage.setItem(key('toppings'), JSON.stringify(toppingsList))
+            localStorage.setItem(key('product_toppings'), JSON.stringify(productToppingsMap))
         } catch { /* ignore quota errors */ }
     }, [])
 
@@ -105,14 +130,16 @@ export function ProductProvider() {
         setIngredientConfigs(readCache('configs', []))
         setProductExtras(readCache('extras', {}))
         setExtraIngredients(readCache('extra_ingredients', {}))
+        setToppings(readCache('toppings', []))
+        setProductToppings(readCache('product_toppings', {}))
 
         async function load() {
             try {
                 setLoading(true)
                 setLoadError(null)
-                const { prods, recs, costsResult, extras, extraIngs } = await fetchProductDataWithRetry(addressId)
+                const { prods, recs, costsResult, extras, extraIngs, toppings: toppingsList, productToppings: productToppingsMap } = await fetchProductDataWithRetry(addressId)
                 if (loadGenRef.current !== gen) return // a newer address/profile change superseded this fetch
-                applyData(prods, recs, costsResult, extras, extraIngs, addressId)
+                applyData(prods, recs, costsResult, extras, extraIngs, addressId, toppingsList, productToppingsMap)
             } catch (error) {
                 // Offline-at-shift-open fallback: deliberately do NOT clear products/
                 // recipes/etc here. They're already holding the cache snapshot set
@@ -134,16 +161,20 @@ export function ProductProvider() {
         // which can be in flight for a while on a bad connection) can't clobber a
         // newer address's data if the user switches addresses before it resolves.
         const gen = loadGenRef.current
-        const [prods, recs, costsResult, extras] = await Promise.all([
+        const [prods, recs, costsResult, extras, toppingsList] = await Promise.all([
             fetchProducts(addressId),
             fetchAllRecipes(addressId),
             fetchIngredientCostsAndUnits(addressId),
             fetchProductExtras(addressId),
+            fetchToppings(addressId),
         ])
         const extraIds = Object.values(extras).flat().map(e => e.id)
-        const extraIngs = await fetchExtraIngredients(extraIds)
+        const [extraIngs, toppingLinks] = await Promise.all([
+            fetchExtraIngredients(extraIds),
+            fetchProductToppingLinks(toppingsList.map(t => t.id)),
+        ])
         if (loadGenRef.current !== gen) return
-        applyData(prods, recs, costsResult, extras, extraIngs, addressId)
+        applyData(prods, recs, costsResult, extras, extraIngs, addressId, toppingsList, buildProductToppingsMap(toppingsList, toppingLinks))
     }, [selectedAddress?.id, applyData])
 
     // Genuinely-offline case: retries above gave up, then connectivity actually
@@ -178,10 +209,12 @@ export function ProductProvider() {
         ingredientConfigs,
         productExtras,
         extraIngredients,
+        toppings,
+        productToppings,
         refreshProducts,
         loading,
         loadError
-    }), [products, recipes, ingredientCosts, ingredientUnits, ingredientConfigs, productExtras, extraIngredients, refreshProducts, loading, loadError])
+    }), [products, recipes, ingredientCosts, ingredientUnits, ingredientConfigs, productExtras, extraIngredients, toppings, productToppings, refreshProducts, loading, loadError])
 
     return (
         <ProductContext.Provider value={value}>
