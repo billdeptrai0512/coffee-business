@@ -77,7 +77,7 @@ export default function Header({ dayName, dateOnly, onOpenHistory, addressName, 
                             {/* Draft pending → check: "tap to commit". Otherwise arrow: "go to history".
                                 dineIn: giỏ chỉ chốt qua nút Thanh toán ở CheckoutBar, nên ✓ ở đây sẽ
                                 hứa một hành động không xảy ra — giữ mũi tên. */}
-                            <span className="shrink-0 w-7 h-7 rounded-full bg-white border-2 border-white/50 flex items-center justify-center">
+                            <span className="shrink-0 w-6 h-6 rounded-full bg-white shadow-sm flex items-center justify-center">
                                 {draftOrder && !dineIn
                                     ? (
                                         <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.125} strokeLinecap="round" strokeLinejoin="round" className="text-bg check-draw">
