@@ -211,7 +211,6 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
                     <div>
                         <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                                <span className={`${PILL} tabular-nums`}>{time}</span>
                                 {order.tableName ? (
                                     // Bàn còn đang mở (openTables) thì bấm nhảy thẳng tới modal chi tiết của
                                     // bàn đó ở /pos — bàn đã tính tiền/đóng thì chỉ mở lưới chọn bàn (TableModal
@@ -226,6 +225,7 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
                                 ) : (
                                     <span className={`${PILL} uppercase tracking-wide`}>Mang đi</span>
                                 )}
+                                <span className={`${PILL} tabular-nums`}>{time}</span>
                             </div>
                             {!order.deletedAt && (
                                 <span className="shrink-0 text-primary leading-none text-[14px] font-bold tabular-nums">
