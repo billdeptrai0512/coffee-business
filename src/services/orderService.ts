@@ -526,21 +526,61 @@ export async function markOrderServed(orderId: UUID, servedAt: string | null): P
     if (error) throw error
 }
 
-// Ghi lại số lần đã in hoá đơn — PrintBill tự tính nextCount (đếm hiện có + 1) và gọi hàm
-// này SAU khi đã in xong (không chặn thao tác in). Ghi đè thẳng số mới thay vì tăng dần
-// bằng SQL để khỏi cần RPC riêng (xem CLAUDE.md — né rủi ro search_path của function mới);
-// đổi lại hai máy in gần như cùng lúc cho cùng 1 đơn có thể mất 1 lần đếm — chấp nhận được,
-// đây chỉ là số tham khảo cho nhân viên, không phải sổ sách.
-export async function incrementOrderPrintCount(orderId: UUID | null, nextCount: number): Promise<void> {
-    if (!orderId || localRepo.isGuest()) return
-    if (!supabase) return
+// Đọc số lần đã in TRỰC TIẾP TỪ SERVER rồi +1 và ghi lại — không tin props.printCount
+// (nguồn todayOrders/openTables ở client): orders_sync (poll đồng bộ, useOrdersPoll.js) chỉ
+// patch một tập cột "head" cố định (total, discount_amount, deleted_at, served_at,
+// table_closed_at, table_name — xem diffOrderHeads), KHÔNG có print_count, nên bản trong bộ
+// nhớ đứng im ở giá trị lúc tải trang, mãi mãi không tự cập nhật dù server đã tăng.
+//
+// Có round-trip mạng nên hàm này CHỈ nên gọi Ở NỀN (không await trước khi in) — xem
+// bumpOrderPrintCount bên dưới, chỗ duy nhất gọi hàm này.
+//
+// Không tăng dần bằng SQL 1 lệnh (`print_count = print_count + 1`) để khỏi cần RPC riêng
+// (xem CLAUDE.md — né rủi ro search_path của function mới); đổi lại hai máy in gần như
+// cùng lúc cho cùng 1 đơn có thể mất 1 lần đếm — chấp nhận được, đây chỉ là số tham khảo
+// cho nhân viên, không phải sổ sách.
+async function incrementOrderPrintCount(orderId: UUID): Promise<number | null> {
+    if (!orderId || localRepo.isGuest() || !supabase) return null
 
+    const { data: current, error: readError } = await supabase
+        .from('orders')
+        .select('print_count')
+        .eq('id', orderId)
+        .single()
+    if (readError) throw readError
+
+    const nextCount = (current?.print_count || 0) + 1
     const { error } = await supabase
         .from('orders')
         .update({ print_count: nextCount })
         .eq('id', orderId)
-
     if (error) throw error
+
+    return nextCount
+}
+
+// Cache trong bộ nhớ TAB HIỆN TẠI (mất khi reload) — cho "In lần" hiện ĐÚNG NGAY khi bấm in
+// (không đợi round-trip mạng của incrementOrderPrintCount ở trên, xem PrintBill.jsx), đồng
+// thời vẫn tăng đúng qua nhiều lần in liên tiếp trong cùng phiên dù PrintBill remount (Nhật
+// ký, mỗi lần bấm in mount lại — xem usePrintArmed) vì cache không mất theo component như
+// props.printCount. Server vẫn là nguồn sự thật: ghi ở nền qua incrementOrderPrintCount (đọc-
+// mới-rồi-ghi), kết quả trả về được hoà lại vào cache (Math.max) — máy khác vừa in xen giữa
+// thì lần in tiếp theo trên máy này vẫn thấy đúng số cao hơn thay vì đếm tụt lại.
+const printCountCache = new Map<UUID, number>()
+
+export function bumpOrderPrintCount(orderId: UUID | null, knownCount: number): number {
+    if (!orderId) return knownCount + 1
+    // Math.max với knownCount — không chỉ cache: props.printCount có thể vừa được refetch ĐẦY
+    // ĐỦ (không qua orders_sync) lên một số MỚI HƠN cache đang giữ (vd máy khác vừa in xen
+    // giữa) — bỏ qua nó thì tab này đếm tụt lại so với thực tế đã biết.
+    const next = Math.max(printCountCache.get(orderId) ?? 0, knownCount) + 1
+    printCountCache.set(orderId, next)
+    incrementOrderPrintCount(orderId)
+        .then(serverNext => {
+            if (serverNext != null) printCountCache.set(orderId, Math.max(printCountCache.get(orderId) ?? 0, serverNext))
+        })
+        .catch(() => {})
+    return next
 }
 
 export async function fetchOpenTables(addressId: UUID | null): Promise<OpenTable[]> {

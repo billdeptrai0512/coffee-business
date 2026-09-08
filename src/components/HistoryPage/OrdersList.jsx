@@ -5,7 +5,7 @@ import { formatVND, computeDiscount, discountToPercent, NO_DISCOUNT } from '../.
 import { dateShortVN, timeStringVN } from '../../utils/dateVN'
 import { priceLineFor } from '../../utils/billLines'
 import { useDiscountEditing } from '../../hooks/useDiscountEditing'
-import { incrementOrderPrintCount } from '../../services/orderService'
+import { bumpOrderPrintCount } from '../../services/orderService'
 import { usePrintArmed } from '../../hooks/usePrintArmed'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { useProducts } from '../../contexts/ProductContext'
@@ -391,8 +391,8 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
                     discountPct={discountPct}
                     total={order.total}
                     printCount={order.printCount ?? 0}
-                    // Đơn offline chưa lên DB (id giả "offline-...") — không có gì để ghi.
-                    onPrinted={(n) => order.isOffline || incrementOrderPrintCount(order.id, n).catch(() => {})}
+                    // Đơn offline chưa lên DB (id giả "offline-...") — không có gì để đọc/ghi.
+                    onPrinted={() => order.isOffline ? null : bumpOrderPrintCount(order.id, order.printCount ?? 0)}
                 />
             )}
         </div>

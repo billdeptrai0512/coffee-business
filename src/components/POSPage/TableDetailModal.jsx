@@ -9,7 +9,7 @@ import { useAddress } from '../../contexts/AddressContext'
 import { useMoveTarget } from '../../hooks/useMoveTarget'
 import { formatVND, discountToPercent } from '../../utils'
 import { printBillNative } from '../../lib/escposBitmap'
-import { incrementOrderPrintCount } from '../../services/orderService'
+import { bumpOrderPrintCount } from '../../services/orderService'
 import { timeStringVN, openedLabelVN, dateShortVN, isSameDayVN } from '../../utils/dateVN'
 import { priceLineFor } from '../../utils/billLines'
 import { Dialog, MODAL_PANEL, CHIP, CHIP_IDLE, TIME_PILL } from '../common/ModalShell'
@@ -313,7 +313,7 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
                 discountPct={discountPct}
                 total={table.total}
                 printCount={printCountRound?.printCount ?? 0}
-                onPrinted={(n) => incrementOrderPrintCount(printCountRound?.id ?? null, n).catch(() => {})}
+                onPrinted={() => bumpOrderPrintCount(printCountRound?.id ?? null, printCountRound?.printCount ?? 0)}
             />
         </Dialog>
     )

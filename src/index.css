@@ -472,15 +472,13 @@ body.pwa-banner-open .address-scroll-list {
   #root { display: none !important; }
   #print-bill {
     display: block !important;
-    /* width cố định (khớp width:300px của captureImage — html2canvas dùng cho đường in
-       native) thay vì để giãn tự do theo @page: không có width cứng, cột 1fr trong
-       BILL_COLS (PrintBill.jsx) tự do lệch vài phần trăm px theo cách trình duyệt làm
-       tròn, đủ để cắt mất rìa chữ cột cuối bên phải. box-sizing:border-box để padding
-       không cộng dồn ra ngoài 300px này. */
-    width: 300px;
-    box-sizing: border-box;
+    /* KHÔNG ép width cứng (từng thử 300px theo chuẩn 80mm@96dpi của captureImage — sai:
+       khổ in thật của máy/driver hẹp hơn giả định đó, ép cứng làm nội dung tràn ra ngoài
+       khổ giấy thật và bị cắt còn nặng hơn). Để width tự co đúng theo @page thật — cột 1fr
+       trong BILL_COLS (PrintBill.jsx) có thể lệch chưa tới 1px do làm tròn của trình duyệt,
+       bù bằng padding phải rộng hơn một chút thay vì đoán số px tuyệt đối. */
     margin: 0;
-    padding: 8px 12px;
+    padding: 8px 14px;
     background: #fff;
     color: #000;
     font-family: ui-monospace, "Courier New", monospace;

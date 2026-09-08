@@ -13,7 +13,7 @@ const BILL_COLS = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 58px 2
 // ponytail: wifi quán hardcode cùng chỗ với logo/địa chỉ/SĐT (xem comment ngay dưới) —
 // đổi mật khẩu wifi sau này chỉ cần sửa 2 hằng này, QR tự sinh lại theo giá trị mới.
 const WIFI_SSID = 'KOPHIN COFFEE'
-const WIFI_PASSWORD = 'kophin xinchao'
+const WIFI_PASSWORD = 'kophinxinchao'
 const WIFI_QR_VALUE = `WIFI:T:WPA;S:${WIFI_SSID};P:${WIFI_PASSWORD};;`
 
 const fullLabel = (d) => `${timeStringVN(d)} ${dateShortVN(d)}`
@@ -29,22 +29,24 @@ const PrintBill = forwardRef(function PrintBill(
     const printedAtRef = useRef(null)
     const printDateRef = useRef(null)
     const printCountLabelRef = useRef(null)
-    // Seed từ số lần đã in LƯU Ở SERVER (đơn.print_count, xem TableDetailModal/OrdersList) —
-    // không phải đếm lại từ 0 mỗi lần component này mount. Trước đây đếm bằng ref cục bộ nên
-    // đóng bàn/mở lại hoặc in ở Nhật ký (PrintBill chỉ mount lúc bấm in, xem usePrintArmed) là
-    // về lại "In lần: 1", sai với thực tế đã in bao nhiêu tờ cho đơn đó.
-    const printCountRef = useRef(printCount ?? 0)
 
     // Cập nhật "Giờ ra"/"Ngày"/"In lần" ngay trước khi lấy bản in — dùng chung cho cả
     // print() (web) và captureImage() (native) nên 2 đường in không lệch giờ/lần in.
+    //
+    // "In lần": onPrinted() (xem TableDetailModal/OrdersList → bumpOrderPrintCount) trả về
+    // NGAY một số đồng bộ (không đợi mạng — in phải tức thì) từ cache phía client, còn ghi
+    // xuống server chạy ở nền. Không đếm bằng biến cục bộ NGAY TRONG component này vì
+    // props.printCount (todayOrders/openTables) không tự cập nhật giữa các lần in — poll đồng
+    // bộ không patch cột print_count (xem comment ở incrementOrderPrintCount) — nên mỗi lần
+    // PrintBill remount (Nhật ký, mount lại mỗi lần bấm in — xem usePrintArmed) sẽ seed lại
+    // đúng 1 số cũ; cache ở tầng gọi (bumpOrderPrintCount) không mất theo component nên tăng
+    // đúng qua nhiều lần in liên tiếp.
     function bumpPrintMeta() {
         const now = new Date()
         if (printedAtRef.current) printedAtRef.current.textContent = fullLabel(now)
         if (printDateRef.current) printDateRef.current.textContent = dateFullVN(now)
-        printCountRef.current += 1
-        if (printCountLabelRef.current) printCountLabelRef.current.textContent = String(printCountRef.current)
-        // Ghi lại server SAU khi đã cập nhật màn hình — không chặn thao tác in vì lỗi mạng.
-        onPrinted?.(printCountRef.current)
+        const next = onPrinted?.()
+        if (printCountLabelRef.current) printCountLabelRef.current.textContent = String(next ?? (printCount ?? 0) + 1)
     }
 
     useImperativeHandle(ref, () => ({
