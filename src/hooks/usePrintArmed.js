@@ -1,22 +1,48 @@
 import { useEffect, useRef, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
+import { printBillNative } from '../lib/escposBitmap'
 
 // Chỉ 1 thẻ được mang id="print-bill" tại 1 thời điểm (CSS @media print chọn theo id) —
 // bấm in mới gắn id cho ĐÚNG thẻ này (mount PrintBill), in xong gỡ luôn để thẻ kế bấm sau
 // không bị dính id cũ. Dùng ở mọi nơi có NHIỀU PrintBill tiềm năng cùng lúc trên 1 màn
 // (danh sách đơn trong Nhật ký, danh sách đơn mang đi) — mount thường trực ở mọi thẻ thì
 // nhiều #print-bill cùng tồn tại, CSS in sẽ hiện chồng lên nhau.
-export function usePrintArmed() {
+//
+// printerIp: IP máy in mạng (selectedAddress.counter_printer_ip) — có + đang chạy app native
+// (Capacitor) thì in bitmap ESC/POS qua mạng (printBillNative), giống hệt nhánh native ở
+// TableDetailModal. THIẾU nhánh này (bản cũ) là bug thật: PrintBill.print() gọi thẳng
+// window.print() — API này KHÔNG TỒN TẠI trên WebView Android (window.print === undefined),
+// ném TypeError ngay trong effect bên dưới, TRƯỚC dòng setPrintArmed(false) → cờ printArmed
+// kẹt ở true mãi mãi → nút in bấm hoài không phản hồi nữa (chỉ tái hiện được trên APK thật,
+// browser thường luôn có window.print nên không lộ ra khi test qua web).
+export function usePrintArmed(printerIp) {
     const billRef = useRef(null)
     const [printArmed, setPrintArmed] = useState(false)
 
     // setState ở đây là chủ đích: đây LÀ đích đến của effect (gỡ mount sau khi đã đồng bộ
-    // với window.print(), một external API), không phải suy ra state từ props/state khác.
+    // với thao tác in, có thể là external API window.print() hoặc network call native), không
+    // phải suy ra state từ props/state khác.
+    //
+    // .finally() thay vì gọi setPrintArmed(false) ngay sau — PHẢI đợi in xong (kể cả nhánh
+    // native, có network) mới gỡ mount PrintBill, nếu không unmount giữa chừng làm mất
+    // #print-bill khỏi DOM trước khi kịp chụp/gọi in. Luôn setPrintArmed(false) dù thành công
+    // hay lỗi — lỗi (mất mạng, máy in tắt...) không được để cờ kẹt lại, nếu không nút in liệt
+    // luôn từ lần lỗi đó trở đi.
     useEffect(() => {
         if (!printArmed) return
-        billRef.current?.print()
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setPrintArmed(false)
-    }, [printArmed])
+        let cancelled = false
+        const job = Capacitor.isNativePlatform() && printerIp
+            ? printBillNative(billRef, printerIp)
+            : new Promise((resolve) => {
+                window.addEventListener('afterprint', resolve, { once: true })
+                setTimeout(resolve, 5000)
+                billRef.current?.print()
+            })
+        Promise.resolve(job).catch(() => {}).finally(() => {
+            if (!cancelled) setPrintArmed(false)
+        })
+        return () => { cancelled = true }
+    }, [printArmed, printerIp])
 
     return { billRef, printArmed, arm: () => setPrintArmed(true) }
 }

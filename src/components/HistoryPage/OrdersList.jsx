@@ -9,6 +9,7 @@ import { bumpOrderPrintCount } from '../../services/orderService'
 import { usePrintArmed } from '../../hooks/usePrintArmed'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { useProducts } from '../../contexts/ProductContext'
+import { useAddress } from '../../contexts/AddressContext'
 import DiscountEditor from '../POSPage/DiscountEditor'
 import PrintBill from '../common/PrintBill'
 
@@ -101,6 +102,7 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
     const navigate = useNavigate()
     const confirm = useConfirm()
     const { products, productExtras } = useProducts()
+    const { selectedAddress } = useAddress()
     // Cùng pattern CartListModal (giỏ hàng chưa gửi), áp cho đơn ĐÃ CHỐT.
     const { editingId: editingItemId, preview, setPreview, toggleEditing } = useDiscountEditing()
     const date = new Date(order.createdAt)
@@ -123,7 +125,7 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
     // đúng 1 lượt gọi món đó. Chỉ khi địa chỉ có bật "Bàn ngồi" (dine_in) — tắt thì chưa
     // có hạ tầng in bill cho quán đó.
     const canPrint = dineIn && !order.deletedAt
-    const { billRef, printArmed, arm } = usePrintArmed()
+    const { billRef, printArmed, arm } = usePrintArmed(selectedAddress?.counter_printer_ip)
 
     // Đơn giá bán từng dòng — order_items không lưu giá, tính lại từ giá món/topping
     // ĐANG hiệu lực trong menu (giống bill in) — dùng chung cho hiển thị lẫn sửa giảm
