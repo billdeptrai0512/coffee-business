@@ -97,6 +97,7 @@ const ORDER_SELECT = `
     deleted_by,
     served_at,
     table_closed_at,
+    print_count,
     order_items (
         id,
         quantity,
@@ -367,7 +368,7 @@ export async function fetchOrdersByRange(addressId: UUID | null, start: Date, en
         if (!supabase) return []
         let query = supabase
             .from('orders')
-            .select(`id, order_no, total, total_cost, discount_amount, payment_method, staff_name, table_name, created_at, deleted_at, deleted_by,
+            .select(`id, order_no, total, total_cost, discount_amount, payment_method, staff_name, table_name, created_at, deleted_at, deleted_by, print_count,
                 order_items(id, quantity, options, product_id, unit_cost, extra_ids, discount_amount, products(name))`)
             .gte('created_at', start.toISOString())
             .lte('created_at', end.toISOString())
@@ -428,7 +429,7 @@ export async function fetchRecentOrders(addressId: UUID | null, limit = 3): Prom
 // "một bàn" cho cả mang đi, không cần state/fetch riêng.
 export type TableLine = { name: string; qty: number }
 export type TableRoundItem = { productId: UUID; qty: number; extraIds: UUID[]; toppingIds: UUID[]; discountAmount: number }
-export type TableRound = { id: UUID; orderNo: number | null; createdAt: string; total: number; discountAmount: number; servedAt: string | null; staffName: string | null; lines: TableLine[]; items: TableRoundItem[] }
+export type TableRound = { id: UUID; orderNo: number | null; createdAt: string; total: number; discountAmount: number; servedAt: string | null; staffName: string | null; printCount: number; lines: TableLine[]; items: TableRoundItem[] }
 export type OpenTable = { name: string | null; total: number; rounds: TableRound[]; openedAt: string; lines: TableLine[] }
 
 // 'Tiền mặt'/'MoMo' đi chung mảng extras nhưng là cách trả tiền, không phải topping —
@@ -525,13 +526,30 @@ export async function markOrderServed(orderId: UUID, servedAt: string | null): P
     if (error) throw error
 }
 
+// Ghi lại số lần đã in hoá đơn — PrintBill tự tính nextCount (đếm hiện có + 1) và gọi hàm
+// này SAU khi đã in xong (không chặn thao tác in). Ghi đè thẳng số mới thay vì tăng dần
+// bằng SQL để khỏi cần RPC riêng (xem CLAUDE.md — né rủi ro search_path của function mới);
+// đổi lại hai máy in gần như cùng lúc cho cùng 1 đơn có thể mất 1 lần đếm — chấp nhận được,
+// đây chỉ là số tham khảo cho nhân viên, không phải sổ sách.
+export async function incrementOrderPrintCount(orderId: UUID | null, nextCount: number): Promise<void> {
+    if (!orderId || localRepo.isGuest()) return
+    if (!supabase) return
+
+    const { error } = await supabase
+        .from('orders')
+        .update({ print_count: nextCount })
+        .eq('id', orderId)
+
+    if (error) throw error
+}
+
 export async function fetchOpenTables(addressId: UUID | null): Promise<OpenTable[]> {
     // ponytail: chế độ khách demo chạy localRepository và không bật dine_in → không có bàn.
     if (!supabase || !addressId || localRepo.isGuest()) return []
 
     const { data, error } = await supabase
         .from('orders')
-        .select('id, order_no, total, discount_amount, created_at, served_at, staff_name, table_name, order_items(quantity, options, product_id, extra_ids, topping_ids, discount_amount, products(name))')
+        .select('id, order_no, total, discount_amount, created_at, served_at, staff_name, table_name, print_count, order_items(quantity, options, product_id, extra_ids, topping_ids, discount_amount, products(name))')
         .eq('address_id', addressId)
         .is('deleted_at', null)
         .is('table_closed_at', null)
@@ -566,7 +584,7 @@ export async function fetchOpenTables(addressId: UUID | null): Promise<OpenTable
         t.total += o.total
         t.rounds.push({
             id: o.id, orderNo: o.order_no ?? null, createdAt: o.created_at, total: o.total, discountAmount: o.discount_amount || 0, servedAt: o.served_at ?? null,
-            staffName: o.staff_name ?? null,
+            staffName: o.staff_name ?? null, printCount: o.print_count || 0,
             lines: roundLines,
             items: (o.order_items || []).map((i: any) => ({
                 productId: i.product_id, qty: i.quantity, extraIds: i.extra_ids || [], toppingIds: i.topping_ids || [], discountAmount: i.discount_amount || 0,

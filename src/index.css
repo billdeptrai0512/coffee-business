@@ -458,24 +458,29 @@ body.pwa-banner-open .address-scroll-list {
 }
 
 /* In bill (PrintBill.jsx — dùng chung cho bill theo bàn ở TableDetailModal và bill đơn
-   mang đi lẻ ở OrdersList). Khối #print-bill nằm ẩn trong DOM lúc bình thường; lúc in
-   thì nó là thứ DUY NHẤT hiện ra. visibility (không phải display) để ẩn phần còn lại:
-   #print-bill nằm sâu trong cây modal/thẻ, display:none ở tổ tiên là mất luôn cả nó.
-   ponytail: in qua trình duyệt, không SDK máy in nhiệt. Đổi khi quán có máy ESC/POS thật. */
+   mang đi lẻ ở OrdersList). #print-bill được portal thẳng ra document.body (xem
+   createPortal trong PrintBill.jsx) nên là anh em của #root, không nằm trong cây app —
+   lúc in chỉ cần display:none thẳng #root là loại hẳn khỏi layout (không chỉ ẩn nhìn
+   như visibility:hidden, tránh nó vẫn chiếm chỗ đẩy #print-bill xuống ra khoảng trắng
+   đầu bill). ponytail: in qua trình duyệt, không SDK máy in nhiệt. Đổi khi quán có máy
+   ESC/POS thật. */
 @page {
   size: 80mm auto;
   margin: 0;
 }
 @media print {
-  body * { visibility: hidden; }
-  #print-bill,
-  #print-bill * { visibility: visible; }
+  #root { display: none !important; }
   #print-bill {
     display: block !important;
-    position: fixed;
-    inset: 0;
+    /* width cố định (khớp width:300px của captureImage — html2canvas dùng cho đường in
+       native) thay vì để giãn tự do theo @page: không có width cứng, cột 1fr trong
+       BILL_COLS (PrintBill.jsx) tự do lệch vài phần trăm px theo cách trình duyệt làm
+       tròn, đủ để cắt mất rìa chữ cột cuối bên phải. box-sizing:border-box để padding
+       không cộng dồn ra ngoài 300px này. */
+    width: 300px;
+    box-sizing: border-box;
     margin: 0;
-    padding: 8px 10px;
+    padding: 8px 12px;
     background: #fff;
     color: #000;
     font-family: ui-monospace, "Courier New", monospace;

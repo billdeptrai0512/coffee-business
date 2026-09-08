@@ -9,6 +9,7 @@ import { useAddress } from '../../contexts/AddressContext'
 import { useMoveTarget } from '../../hooks/useMoveTarget'
 import { formatVND, discountToPercent } from '../../utils'
 import { printBillNative } from '../../lib/escposBitmap'
+import { incrementOrderPrintCount } from '../../services/orderService'
 import { timeStringVN, openedLabelVN, dateShortVN, isSameDayVN } from '../../utils/dateVN'
 import { priceLineFor } from '../../utils/billLines'
 import { Dialog, MODAL_PANEL, CHIP, CHIP_IDLE, TIME_PILL } from '../common/ModalShell'
@@ -55,7 +56,11 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
     // nơi khác (mỗi đợt gộp vào giữ nguyên số cũ, xem moveTableRounds — bill khi đó có thể
     // lẫn nhiều số, chấp nhận được vì số đã in/đọc cho khách trước lúc gộp).
     const lastStaff = table.rounds.at(-1)?.staffName || null
-    const orderNo = table.rounds.find(r => r.orderNo != null)?.orderNo ?? null
+    // Đợt mang order_no cũng là đợt đại diện để đếm "In lần" — cả bàn chỉ có 1 tờ bill,
+    // dồn số lần in vào đúng 1 dòng orders thay vì rải/không nhất quán qua nhiều đợt
+    // (xem 20260908_order_print_count.sql).
+    const printCountRound = table.rounds.find(r => r.orderNo != null)
+    const orderNo = printCountRound?.orderNo ?? null
     const discountTotal = table.rounds.reduce((s, r) => s + (r.discountAmount || 0), 0)
     const subtotal = table.total + discountTotal
     const { pct: discountPct } = discountToPercent(subtotal, discountTotal)
@@ -307,6 +312,8 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
                 discountTotal={discountTotal}
                 discountPct={discountPct}
                 total={table.total}
+                printCount={printCountRound?.printCount ?? 0}
+                onPrinted={(n) => incrementOrderPrintCount(printCountRound?.id ?? null, n).catch(() => {})}
             />
         </Dialog>
     )
