@@ -71,12 +71,37 @@ function withTimeout(promise, ms, label) {
     ])
 }
 
+// Chờ ms mili giây — dùng cho khoảng nghỉ giữa các lần thử lại bên dưới.
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Máy in nhiệt rẻ tiền (Xprinter...) qua TCP thường chỉ có 1 khe kết nối — bận in đợt
+// trước, hoặc socket cũ chưa kịp giải phóng hẳn phía OS (dù plugin đã đóng đúng cách,
+// xem patches/), là lần connect kế tiếp bị từ chối "Unable to connect to TCP device"
+// dù cùng mạng, cùng IP — CHẬP CHỜN theo thời điểm, không phải lỗi cấu hình. Thử lại
+// vài lần với khoảng nghỉ ngắn trước khi thật sự báo lỗi cho người dùng — attempt sau
+// tạo TCP connection MỚI HOÀN TOÀN (không phải nối lại cái cũ), nên gần như luôn qua
+// được nếu đây đúng là tranh chấp khe kết nối thoáng qua.
+async function printWithRetry(ESCPOSPlugin, payload, attempts = 3) {
+    let lastErr
+    for (let i = 0; i < attempts; i++) {
+        try {
+            return await withTimeout(ESCPOSPlugin.printFormattedText(payload), 8000, 'printFormattedText')
+        } catch (err) {
+            lastErr = err
+            if (i < attempts - 1) await sleep(800)
+        }
+    }
+    throw lastErr
+}
+
 export async function printBillNative(billRef, printerIp) {
     const canvas = await withTimeout(billRef.current?.captureImage(), 8000, 'captureImage')
     if (!canvas) throw new Error('Không tìm thấy #print-bill để chụp')
     const hex = canvasToEscPosImage(canvas)
     const { ESCPOSPlugin } = await import('@albgen/capacitor-escpos-plugin')
-    await withTimeout(ESCPOSPlugin.printFormattedText({
+    await printWithRetry(ESCPOSPlugin, {
         type: 'tcp',
         id: printerIp,
         address: printerIp,
@@ -85,5 +110,5 @@ export async function printBillNative(billRef, printerIp) {
         // printFormattedText (xem ESCPOSPlugin.java) — thiếu cái này máy không tự cắt giấy.
         action: 'printAndCut',
         text: `[C]<img>${hex}</img>\n\n\n`,
-    }), 8000, 'printFormattedText')
+    })
 }
