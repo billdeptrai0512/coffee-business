@@ -142,6 +142,24 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
         })
     }
 
+    // Nút "In bill" ở header — KHÁC handleBill (Tính tiền, đã có billing chặn bấm đúp): trước
+    // đây không có cờ nào chặn bấm lại trong lúc in native (vài giây thật qua mạng, không có
+    // phản hồi tức thì nào cho người dùng thấy) — bấm 2 lần liên tiếp gọi captureImage() chồng
+    // lên nhau, cùng mutate style/className của #print-bill, làm ảnh chụp lỡ dở/lỗi mà không
+    // ném ra lỗi gì để bắt (xem captureChainRef ở PrintBill.jsx — đã chuỗi hoá phần đó làm
+    // lưới an toàn cuối, nhưng chặn từ đây vẫn tốt hơn: khỏi phải xếp hàng chờ). Dùng lại đúng
+    // cờ billing (không cần state riêng) — khoá luôn cả "Tính tiền" trong lúc đang in tay là
+    // hợp lý, không nên đóng bàn giữa lúc in dở.
+    async function handleHeaderPrint() {
+        if (billing) return
+        setBilling(true)
+        try {
+            await handlePrint()
+        } finally {
+            setBilling(false)
+        }
+    }
+
     async function handleBill() {
         if (billing) return
         setBilling(true)
@@ -214,9 +232,10 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
                     </button>
                 )}
                 <button
-                    onClick={handlePrint}
+                    onClick={handleHeaderPrint}
+                    disabled={billing}
                     aria-label="In bill"
-                    className="shrink-0 w-[26px] h-[26px] rounded-full border bg-surface-light border-border/60 flex items-center justify-center text-text-secondary hover:text-primary transition-colors"
+                    className="shrink-0 w-[26px] h-[26px] rounded-full border bg-surface-light border-border/60 flex items-center justify-center text-text-secondary hover:text-primary transition-colors disabled:opacity-60 disabled:pointer-events-none"
                 >
                     <Printer size={14} strokeWidth={2.25} />
                 </button>
