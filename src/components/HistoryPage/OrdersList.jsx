@@ -5,6 +5,7 @@ import { formatVND, computeDiscount, discountToPercent, NO_DISCOUNT } from '../.
 import { dateShortVN, timeStringVN } from '../../utils/dateVN'
 import { priceLineFor } from '../../utils/billLines'
 import { useDiscountEditing } from '../../hooks/useDiscountEditing'
+import { useToast } from '../../hooks/useToast'
 import { bumpOrderPrintCount } from '../../services/orderService'
 import { usePrintArmed } from '../../hooks/usePrintArmed'
 import { useConfirm } from '../../contexts/ConfirmContext'
@@ -12,6 +13,7 @@ import { useProducts } from '../../contexts/ProductContext'
 import { useAddress } from '../../contexts/AddressContext'
 import DiscountEditor from '../POSPage/DiscountEditor'
 import PrintBill from '../common/PrintBill'
+import Toast from '../POSPage/Toast'
 
 // Nút icon tròn trên thẻ đơn (in, xoá) — cùng một khuôn, tách ra để đổi kiểu
 // một lần. Cùng kích thước với hàng nút trong TableDetailModal.
@@ -103,6 +105,7 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
     const confirm = useConfirm()
     const { products, productExtras } = useProducts()
     const { selectedAddress } = useAddress()
+    const { toast, showError } = useToast()
     // Cùng pattern CartListModal (giỏ hàng chưa gửi), áp cho đơn ĐÃ CHỐT.
     const { editingId: editingItemId, preview, setPreview, toggleEditing } = useDiscountEditing()
     const date = new Date(order.createdAt)
@@ -125,7 +128,10 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
     // đúng 1 lượt gọi món đó. Chỉ khi địa chỉ có bật "Bàn ngồi" (dine_in) — tắt thì chưa
     // có hạ tầng in bill cho quán đó.
     const canPrint = dineIn && !order.deletedAt
-    const { billRef, printArmed, arm } = usePrintArmed(selectedAddress?.counter_printer_ip)
+    const { billRef, printArmed, arm } = usePrintArmed(
+        selectedAddress?.counter_printer_ip,
+        (err) => showError(err, 'In hoá đơn')
+    )
 
     // Đơn giá bán từng dòng — order_items không lưu giá, tính lại từ giá món/topping
     // ĐANG hiệu lực trong menu (giống bill in) — dùng chung cho hiển thị lẫn sửa giảm
@@ -192,6 +198,7 @@ const OrderCard = memo(function OrderCard({ order, runningTotal, isDeleting, set
 
     return (
         <div className={`bg-surface border rounded-[20px] p-4 shadow-sm flex flex-col gap-2 relative overflow-hidden transition-shadow duration-[1500ms] ${isNew ? 'border-primary shadow-[0_0_16px_rgba(255,107,53,0.45)]' : 'border-border/60'}`}>
+            <Toast toast={toast} />
             {/* Đơn vừa nhận realtime từ máy khác — glow cam vài giây rồi tự tắt (justArrivedIds ở POSContext) để nhân viên quầy nhận ra ngay, không phải nhìn chằm chằm danh sách */}
             {order.deletedAt && (
                 <div className="absolute top-0 left-0 bg-danger/10 text-danger text-[10px] font-bold px-3 py-1.5 rounded-br-[14px] border-r border-b border-danger/10 flex items-center gap-1.5 uppercase tracking-wider z-10">

@@ -15,7 +15,10 @@ import { printBillNative } from '../lib/escposBitmap'
 // ném TypeError ngay trong effect bên dưới, TRƯỚC dòng setPrintArmed(false) → cờ printArmed
 // kẹt ở true mãi mãi → nút in bấm hoài không phản hồi nữa (chỉ tái hiện được trên APK thật,
 // browser thường luôn có window.print nên không lộ ra khi test qua web).
-export function usePrintArmed(printerIp) {
+// onError(err): gọi khi nhánh native (printBillNative) ném lỗi — KHÔNG được nuốt lỗi lặng
+// lẽ (bản trước làm vậy): người bấm in không thấy gì cả (không ra giấy, không báo lỗi) thì
+// không cách nào biết là mất mạng/máy in tắt hay app đang có bug thật.
+export function usePrintArmed(printerIp, onError) {
     const billRef = useRef(null)
     const [printArmed, setPrintArmed] = useState(false)
 
@@ -38,11 +41,13 @@ export function usePrintArmed(printerIp) {
                 setTimeout(resolve, 5000)
                 billRef.current?.print()
             })
-        Promise.resolve(job).catch(() => {}).finally(() => {
-            if (!cancelled) setPrintArmed(false)
-        })
+        Promise.resolve(job)
+            .catch(err => onError?.(err))
+            .finally(() => {
+                if (!cancelled) setPrintArmed(false)
+            })
         return () => { cancelled = true }
-    }, [printArmed, printerIp])
+    }, [printArmed, printerIp, onError])
 
     return { billRef, printArmed, arm: () => setPrintArmed(true) }
 }
