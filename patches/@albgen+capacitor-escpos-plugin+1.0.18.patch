@@ -1,0 +1,21 @@
+diff --git a/node_modules/@albgen/capacitor-escpos-plugin/android/src/main/java/com/albgen/plugins/escposplugincap/ESCPOSPlugin.java b/node_modules/@albgen/capacitor-escpos-plugin/android/src/main/java/com/albgen/plugins/escposplugincap/ESCPOSPlugin.java
+index 4f0c81d..dbce81a 100644
+--- a/node_modules/@albgen/capacitor-escpos-plugin/android/src/main/java/com/albgen/plugins/escposplugincap/ESCPOSPlugin.java
++++ b/node_modules/@albgen/capacitor-escpos-plugin/android/src/main/java/com/albgen/plugins/escposplugincap/ESCPOSPlugin.java
+@@ -248,7 +248,16 @@ public class ESCPOSPlugin extends Plugin {
+                 throw new JSONException("EscPosConnectionException: " + e.getMessage());
+             } catch (Exception e) {
+                 throw new JSONException("Exception: " + e.getMessage());
++            } finally {
++                // PATCH (KOPOS): đóng kết nối ngay sau mỗi lần in — bản gốc không bao giờ gọi
++                // disconnectPrinter(), để socket TCP treo lại vô thời hạn. Nhiều máy in nhiệt rẻ
++                // chỉ nhận 1 kết nối cùng lúc; kết nối cũ còn treo làm lần in kế tiếp bị từ chối
++                // "Unable to connect to TCP device" dù cùng mạng, cùng máy in — đúng triệu chứng
++                // "lúc in được lúc không". Bọc try/catch riêng vì lỗi lúc đóng kết nối không được
++                // che mất lỗi in thật (nếu có) đang trên đường ném ra ngoài.
++                try { printer.disconnectPrinter(); } catch (Exception ignored) {}
+             }
++            call.resolve();
+         }
+         catch(Exception ex)
+         {

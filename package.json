@@ -14,7 +14,8 @@
     "test:inventory": "node scripts/test-inventory-staging.mjs",
     "test:money": "node scripts/test-money-staging.mjs",
     "check:search-path": "node scripts/check-search-path.mjs",
-    "cap:sync": "vite build && npx cap sync"
+    "cap:sync": "vite build && npx cap sync",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@albgen/capacitor-escpos-plugin": "^1.0.18",
@@ -51,6 +52,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "patch-package": "^8.0.1",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.1",
