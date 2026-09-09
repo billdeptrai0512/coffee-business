@@ -548,6 +548,11 @@ export function POSProvider() {
     // Đường 1-chạm gọi doSubmit(cartItems) như cũ — chiết khấu vẫn sửa sau ở /history.
     function doSubmit(cartItems, discountAmountArg = 0, tableNameArg = null) {
         if (!cartItems || cartItems.length === 0) return
+        // CheckoutBar (dine-in) gửi thẳng state `tableName`, vốn là '' khi chọn "Mang đi" —
+        // chuẩn hoá về null ngay đây để khớp key bucket takeaway (name === null ở TableModal)
+        // và khớp NULLIF phía server (bulk_create_orders). Thiếu bước này thì đơn rơi vào một
+        // bucket tên '' không thẻ nào tra tới — "biến mất" khỏi lưới tới lần refreshTables kế.
+        tableNameArg = tableNameArg || null
 
         const costPerItem = {}
         // ponytail: giá vốn optimistic chỉ tính recipe món + extra_ingredients, CHƯA cộng
