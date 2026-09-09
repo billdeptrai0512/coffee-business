@@ -14,8 +14,11 @@ export default function Toast({ toast }) {
         : toast.type === 'warning' ? '⚡ '
         : null
 
+    // z-[300]: trên cả BottomSheet/ConfirmContext (z-[200]) — toast lỗi phải luôn thấy
+    // được kể cả khi bắn ra trong lúc một modal/confirm đang mở (vd in bill lỗi trong
+    // TableDetailModal), không bị modal che mất.
     return (
-        <div className={`toast-in fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-2xl text-[13px] font-semibold shadow-2xl max-w-[90vw] border backdrop-blur-sm flex flex-col items-center gap-1.5 ${colorClass}`}>
+        <div className={`toast-in fixed top-5 left-1/2 -translate-x-1/2 z-[300] px-4 py-3 rounded-2xl text-[13px] font-semibold shadow-2xl max-w-[90vw] border backdrop-blur-sm flex flex-col items-center gap-1.5 ${colorClass}`}>
             <span className="text-center text-balance leading-snug">{icon}{toast.message}</span>
             {toast.action && (
                 <button
