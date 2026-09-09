@@ -672,6 +672,23 @@ export async function reopenTable(addressId: UUID, tableName: string, closedAt: 
     if (error) throw error
 }
 
+// Đổi tên bàn cố định (addresses.tables) đồng thời đổi luôn table_name của mọi đợt
+// ĐANG MỞ dưới tên cũ — không thì bàn đang có khách sẽ rơi khỏi danh sách cố định
+// (biến thành ad-hoc, xem TableModal) mà bill vẫn hiện tên cũ, sai với tên mới vừa đổi.
+// Cùng trust boundary như closeTable (chỉ đổi nhãn, không đụng tiền) nên update thẳng.
+export async function renameTable(addressId: UUID, oldName: string, newName: string): Promise<void> {
+    if (!supabase) throw new Error('No Supabase connection')
+
+    const { error } = await supabase
+        .from('orders')
+        .update({ table_name: newName })
+        .eq('address_id', addressId)
+        .eq('table_name', oldName)
+        .is('table_closed_at', null)
+
+    if (error) throw error
+}
+
 // Gộp bàn (chuyển hết đợt) / tách bàn (chuyển một đợt) đều là MỘT thao tác: đổi
 // table_name của các đợt (order) đã chọn. Không đụng total/order_no — mỗi đợt giữ
 // nguyên số hoá đơn đã cấp lúc tạo (xem orderNo trong TableDetailModal), gộp/tách chỉ
