@@ -30,8 +30,11 @@ export function sortIngredients(a, b, customOrderArray) {
 // so a user-typed display name ("Cà Phê") always lands on the same DB key as
 // the auto-seeded one ("cà_phê"). Trim + lower + spaces→underscore is enough
 // because the DB column is `text` and accepts any unicode word chars.
+// .normalize('NFC') first: macOS/Excel can save diacritics as combining marks
+// (NFD) while names typed in the browser are NFC — without this, 2 names that
+// look identical land on different keys (silently create a duplicate ingredient).
 export function normalizeIngredientKey(raw) {
-    return String(raw || '').trim().toLowerCase().replace(/\s+/g, '_')
+    return String(raw || '').trim().normalize('NFC').toLowerCase().replace(/\s+/g, '_')
 }
 
 export function ingredientLabel(key) {

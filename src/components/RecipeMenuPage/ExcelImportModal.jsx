@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { Dialog } from '../common/ModalShell'
 import { useProducts } from '../../contexts/ProductContext'
@@ -6,13 +6,17 @@ import { useAddress } from '../../contexts/AddressContext'
 import { useToast } from '../../hooks/useToast'
 import Toast from '../POSPage/Toast'
 import { parseWorkbook, resolveImportPlan, commitImportPlan } from '../../services/importService'
+import { downloadCurrentDataExcel } from '../../services/exportService'
 
 // Nhập liệu hàng loạt từ 1 file Excel (mẫu ở public/templates/mau-nhap-lieu.xlsx) — mở từ
 // "+ Tạo công thức" ở RecipeMenuPage thay vì 1 trang riêng. 2 cột trái/phải (tải mẫu | chọn
 // file), kết quả xem trước (resolveImportPlan, thuần, chưa ghi gì) hiện full-width bên dưới
 // sau khi chọn file, xác nhận mới thật sự ghi (commitImportPlan).
 export default function ExcelImportModal({ onClose }) {
-    const { products, toppings, ingredientCosts, refreshProducts } = useProducts()
+    const {
+        products, toppings, ingredientCosts, ingredientUnits, ingredientConfigs,
+        recipes, productToppings, productExtras, extraIngredients, refreshProducts,
+    } = useProducts()
     const { selectedAddress } = useAddress()
     const { toast, showToast, showError } = useToast()
     const fileInputRef = useRef(null)
@@ -20,6 +24,17 @@ export default function ExcelImportModal({ onClose }) {
     const [fileName, setFileName] = useState('')
     const [result, setResult] = useState(null) // { plan, blockingErrors, warnings }
     const [committing, setCommitting] = useState(false)
+    const [exporting, setExporting] = useState(false)
+
+    // Dữ liệu ĐÃ CÓ, dùng để khớp tên khi xem trước lẫn khi xuất — Extras key theo
+    // productId nội bộ nên cần join sang tên món ở đây (importService chỉ biết tên).
+    const existing = useMemo(() => {
+        const productById = new Map(products.map(p => [p.id, p.name]))
+        const extras = Object.entries(productExtras).flatMap(([productId, exs]) =>
+            exs.map(e => ({ id: e.id, productName: productById.get(productId) || '', name: e.name }))
+        )
+        return { products, toppings, ingredientCosts, extras }
+    }, [products, toppings, ingredientCosts, productExtras])
 
     async function handleFileChange(e) {
         const file = e.target.files?.[0]
@@ -28,7 +43,7 @@ export default function ExcelImportModal({ onClose }) {
         try {
             const buf = await file.arrayBuffer()
             const parsed = parseWorkbook(buf)
-            setResult(resolveImportPlan(parsed, { products, toppings, ingredientCosts }))
+            setResult(resolveImportPlan(parsed, existing))
             setFileName(file.name)
         } catch (err) {
             showError(err, 'Đọc file Excel')
@@ -39,26 +54,60 @@ export default function ExcelImportModal({ onClose }) {
         if (!result || result.blockingErrors.length > 0 || committing) return
         setCommitting(true)
         try {
-            await commitImportPlan(result.plan, selectedAddress?.id ?? null, { products, toppings, ingredientCosts })
+            await commitImportPlan(result.plan, selectedAddress?.id ?? null, existing)
             await refreshProducts()
             showToast('Đã nhập dữ liệu thành công', 'success')
             setResult(null)
             setFileName('')
         } catch (err) {
+            // Import không chạy trong 1 transaction — lỗi giữa chừng có thể đã ghi được 1 phần
+            // (VD tạo xong vài sản phẩm/tùy chọn rồi mới rớt mạng). Đồng bộ lại state rồi buộc
+            // chọn lại file: preview lần sau sẽ resolveImportPlan trên dữ liệu MỚI NHẤT, nên
+            // phần đã ghi thành công tự rơi vào nhánh "cập nhật" thay vì bị tạo trùng khi bấm lại.
+            await refreshProducts().catch(() => { })
+            setResult(null)
             showError(err, 'Nhập liệu Excel')
+            showToast('1 phần dữ liệu có thể đã được ghi — chọn lại file rồi nhập lại để tự bổ sung phần còn thiếu, không bị trùng', 'warning')
         } finally {
             setCommitting(false)
         }
     }
 
+    async function handleExport() {
+        if (exporting) return
+        setExporting(true)
+        try {
+            await downloadCurrentDataExcel({
+                addressName: selectedAddress?.name,
+                products, toppings, ingredientConfigs, ingredientUnits,
+                recipes, productToppings, productExtras, extraIngredients,
+            })
+        } catch (err) {
+            showError(err, 'Xuất Excel')
+        } finally {
+            setExporting(false)
+        }
+    }
+
     const summary = result && [
         [result.plan.products.length, 'sản phẩm mới'],
+        [result.plan.productUpdates.length, 'sản phẩm cập nhật giá'],
         [result.plan.ingredients.length, 'nguyên liệu mới'],
+        [result.plan.ingredientUpdates.length, 'nguyên liệu cập nhật giá/đơn vị'],
         [result.plan.recipes.length, 'dòng công thức'],
         [result.plan.toppings.length, 'topping mới'],
+        [result.plan.toppingUpdates.length, 'topping cập nhật giá'],
         [result.plan.toppingIngredients.length, 'dòng công thức topping'],
+        [result.plan.extras.length, 'tùy chọn thêm mới'],
+        [result.plan.extraUpdates.length, 'tùy chọn thêm cập nhật'],
+        [result.plan.extraIngredients.length, 'dòng công thức tùy chọn'],
         [result.plan.toppingLinks.reduce((s, l) => s + l.productNames.length, 0), 'liên kết topping-món'],
     ].filter(([n]) => n > 0)
+
+    const hasFieldUpdates = result && (result.plan.productUpdates.length > 0 || result.plan.ingredientUpdates.length > 0 ||
+        result.plan.toppingUpdates.length > 0 || result.plan.extraUpdates.length > 0)
+    const hasRecipeUpdates = result && (result.plan.recipes.length > 0 || result.plan.toppingIngredients.length > 0 || result.plan.extraIngredients.length > 0)
+    const hasToppingLinks = result && result.plan.toppingLinks.length > 0
 
     return (
         <Dialog onClose={() => !committing && onClose()} panelClassName="w-full max-w-xl mx-4 max-h-[85dvh] flex flex-col bg-surface border border-border/60 rounded-[24px] shadow-2xl overflow-hidden">
@@ -95,6 +144,14 @@ export default function ExcelImportModal({ onClose }) {
                     <input ref={fileInputRef} type="file" accept=".xlsx" onChange={handleFileChange} className="hidden" />
                 </div>
 
+                <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="w-full py-2.5 text-[12px] text-text-secondary hover:text-primary font-bold bg-surface-light border border-border/60 rounded-[14px] transition-colors disabled:opacity-50"
+                >
+                    {exporting ? 'Đang xuất...' : 'Xuất dữ liệu hiện tại ra Excel (để sửa rồi nạp lại)'}
+                </button>
+
                 {result && (
                     <div className="flex flex-col gap-3">
                         {summary.length > 0 && (
@@ -105,13 +162,16 @@ export default function ExcelImportModal({ onClose }) {
                             </div>
                         )}
 
-                        {(result.plan.recipes.length > 0 || result.plan.toppingIngredients.length > 0 || result.plan.toppingLinks.length > 0) && (
+                        {(hasFieldUpdates || hasRecipeUpdates || hasToppingLinks) && (
                             <div className="space-y-1 bg-warning-soft border border-warning/20 rounded-[12px] p-3">
                                 <p className="text-[12px] font-black text-warning uppercase">Lưu ý ghi đè</p>
-                                {(result.plan.recipes.length > 0 || result.plan.toppingIngredients.length > 0) && (
-                                    <p className="text-[12px] text-warning">Công thức/Công thức Topping: dòng trùng đúng nguyên liệu đã có trong công thức sẽ bị ghi đè số lượng, không hỏi lại.</p>
+                                {hasFieldUpdates && (
+                                    <p className="text-[12px] text-warning">Sản phẩm/Nguyên liệu/Topping/Tùy chọn thêm trùng tên đã có: giá bán (và đơn vị với Nguyên liệu) sẽ bị ghi đè theo file, không hỏi lại.</p>
                                 )}
-                                {result.plan.toppingLinks.length > 0 && (
+                                {hasRecipeUpdates && (
+                                    <p className="text-[12px] text-warning">Công thức/Công thức Topping/Công thức tùy chọn: dòng trùng đúng nguyên liệu đã có trong công thức sẽ bị ghi đè số lượng, không hỏi lại.</p>
+                                )}
+                                {hasToppingLinks && (
                                     <p className="text-[12px] text-warning">Topping áp dụng món: ghi đè TOÀN BỘ danh sách món của mỗi topping trong file — món cũ không có trong file sẽ bị gỡ liên kết.</p>
                                 )}
                             </div>

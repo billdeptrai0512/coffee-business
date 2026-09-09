@@ -5,6 +5,7 @@ import { upsertSession } from '../services/authService'
 import { useOfflineSync, addPendingOrder, addPendingTableClose, removePendingTableClose } from '../hooks/useOfflineSync'
 import { useOrdersPoll } from '../hooks/useOrdersPoll'
 import { dateStringVN } from '../utils/dateVN'
+import { resolveDiscountedPrice } from '../utils/discountPrograms'
 import { calculateProductCost, computeDiscount, discountToPercent, cartLineSubtotal, NO_DISCOUNT } from '../utils'
 import { cartBelongsToAddress, shouldRestoreCartOnFailure } from '../utils/posCartGuards'
 import { useProducts } from './ProductContext'
@@ -37,7 +38,7 @@ function mergeFetchedOrders(prev, fetchedOrders) {
 }
 
 export function POSProvider() {
-    const { products, recipes, ingredientCosts, extraIngredients, productExtras, productToppings } = useProducts()
+    const { products, recipes, ingredientCosts, extraIngredients, productExtras, productToppings, productDiscounts } = useProducts()
     const { selectedAddress } = useAddress()
     const { profile, isGuest, hasSession } = useAuth()
     const addressId = selectedAddress?.id
@@ -727,7 +728,8 @@ export function POSProvider() {
 
         const cartItemId = crypto.randomUUID()
         const stickyExtras = (productExtras[product.id] || []).filter(e => e.is_sticky && enabledStickyExtraIdsRef.current.includes(e.id))
-        const newItem = { cartItemId, productId: product.id, name: product.name, basePrice: product.price, quantity: 1, extras: [...stickyExtras], toppings: [] }
+        const basePrice = resolveDiscountedPrice(product.price, productDiscounts[product.id]) ?? product.price
+        const newItem = { cartItemId, productId: product.id, name: product.name, basePrice, quantity: 1, extras: [...stickyExtras], toppings: [] }
         // Update cartRef SYNCHRONOUSLY (not just via the [cart] effect) so a very
         // fast next tap reads this held item and submits it — otherwise the effect
         // lags one frame and the item can be overwritten unsubmitted (lost order).
@@ -738,7 +740,7 @@ export function POSProvider() {
         setCart(next)
         activeCartItemIdRef.current = cartItemId // sync, same reason as cartRef above
         setActiveCartItemId(cartItemId)
-    }, [productExtras])
+    }, [productExtras, productDiscounts])
 
     // dineIn: xoá 1 dòng khỏi giỏ. Chỉ dùng nội bộ cho cancelHeld (nút X trên card) —
     // giỏ không có UI danh sách riêng, món đang dựng nhìn ở focus card + dòng draft Nhật ký.

@@ -29,6 +29,8 @@ const IngredientManagementPage = lazy(() => import('./pages/IngredientManagement
 const IngredientDetailPage = lazy(() => import('./pages/IngredientDetailPage'))
 const ToppingsPage = lazy(() => import('./pages/ToppingsPage'))
 const ToppingDetailPage = lazy(() => import('./pages/ToppingDetailPage'))
+const DiscountProgramsPage = lazy(() => import('./pages/DiscountProgramsPage'))
+const DiscountProgramDetailPage = lazy(() => import('./pages/DiscountProgramDetailPage'))
 
 function PageLoading() {
   return (
@@ -139,6 +141,8 @@ export default function App() {
                           <Route path="/ingredients/:ingredientKey" element={<IngredientDetailPage />} />
                           <Route path="/toppings" element={<ToppingsPage />} />
                           <Route path="/toppings/:toppingId" element={<ToppingDetailPage />} />
+                          <Route path="/discounts" element={<DiscountProgramsPage />} />
+                          <Route path="/discounts/:id" element={<DiscountProgramDetailPage />} />
                         </Route>
                       </Route>
                     </Route>

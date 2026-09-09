@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useProducts } from '../../contexts/ProductContext'
 import MenuDivider from '../common/MenuDivider'
 import { computeExtrasAfterIdx } from '../../utils/menuGridLayout'
+import { resolveDiscountedPrice } from '../../utils/discountPrograms'
 import { onboardingHintClass, norm } from '../../utils/onboardingHint'
 
 // The WHOLE card is the tap surface.
@@ -17,7 +18,7 @@ import { onboardingHintClass, norm } from '../../utils/onboardingHint'
 // memo: onAdd/onCancel are now stable across taps (see POSContext's useCallback
 // wiring) and product/qty are cheap-to-compare — lets untouched cards skip
 // re-rendering when MenuGrid re-renders on every single tap.
-const ProductCard = memo(function ProductCard({ product, qty, onAdd, onCancel, hint, showQty }) {
+const ProductCard = memo(function ProductCard({ product, qty, onAdd, onCancel, hint, showQty, discountedPrice }) {
     const held = qty > 0
     const hintClass = onboardingHintClass(hint)
     const [pulseKey, setPulseKey] = useState(0)        // bump per tap-add → replays the confirm pulse
@@ -107,11 +108,19 @@ const ProductCard = memo(function ProductCard({ product, qty, onAdd, onCancel, h
                 </h3>
             </div>
 
-            {/* Bottom: Price */}
+            {/* Bottom: Price — chương trình giảm giá đang active hôm nay thì hiện giá gốc gạch
+                ngang + giá mới, để nhân viên thấy ngay không cần bấm vào món. */}
             <div className="flex items-end justify-between mt-3 relative z-10 w-full gap-2">
-                <span className={`font-extrabold text-[13px] pb-1 ${held ? 'text-primary' : 'text-text-secondary'}`}>
-                    {formatVND(product.price)}
-                </span>
+                {discountedPrice != null ? (
+                    <span className="flex items-baseline gap-1.5">
+                        <span className="text-[10px] text-text-secondary/60 line-through">{formatVND(product.price)}</span>
+                        <span className="font-extrabold text-[13px] pb-1 text-success">{formatVND(discountedPrice)}</span>
+                    </span>
+                ) : (
+                    <span className={`font-extrabold text-[13px] pb-1 ${held ? 'text-primary' : 'text-text-secondary'}`}>
+                        {formatVND(product.price)}
+                    </span>
+                )}
             </div>
         </div>
     )
@@ -168,7 +177,7 @@ function ExtrasPopover({ activeProductId, extras, toppings, activeItem, enabledS
     )
 }
 
-export default function MenuGrid({ products, cart, activeItem, onAddItem, onCancelHeld, productExtras, productToppings, onToggleExtra, onToggleTopping, enabledStickyExtraIds = [], onToggleStickyExtra, hintProductId, hintExtraName = null, dineIn = false }) {
+export default function MenuGrid({ products, cart, activeItem, onAddItem, onCancelHeld, productExtras, productToppings, productDiscounts, onToggleExtra, onToggleTopping, enabledStickyExtraIds = [], onToggleStickyExtra, hintProductId, hintExtraName = null, dineIn = false }) {
     const navigate = useNavigate()
     const { isManager, isAdmin } = useAuth()
     const { loading, loadError } = useProducts()
@@ -253,6 +262,7 @@ export default function MenuGrid({ products, cart, activeItem, onAddItem, onCanc
                 onCancel={onCancelHeld}
                 hint={product.id === hintProductId}
                 showQty={dineIn}
+                discountedPrice={resolveDiscountedPrice(product.price, productDiscounts?.[product.id])}
             />
         ))
         if (idx === extrasAfterIdx) {

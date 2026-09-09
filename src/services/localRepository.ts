@@ -19,6 +19,8 @@ const KEYS = {
     TOPPINGS: 'guest_toppings',
     TOPPING_INGREDIENTS: 'guest_topping_ingredients',
     PRODUCT_TOPPINGS: 'guest_product_toppings',
+    DISCOUNT_PROGRAMS: 'guest_discount_programs',
+    DISCOUNT_PROGRAM_PRODUCTS: 'guest_discount_program_products',
     ORDERS: 'guest_orders',
     EXPENSES: 'guest_expenses',
     SHIFT_CLOSINGS: 'guest_shift_closings',
@@ -899,4 +901,51 @@ export const setLocalToppingProductLinks = (toppingId: string, productIds: strin
         links.push({ id: generateId(), product_id: productId, topping_id: toppingId });
     }
     set(KEYS.PRODUCT_TOPPINGS, links);
+};
+
+// --- Discount programs (thực thể toàn cục theo địa chỉ, gắn nhiều món qua
+// DISCOUNT_PROGRAM_PRODUCTS) — mirrors Toppings ở trên. ---
+
+export const fetchLocalDiscountPrograms = (addressId: string | null) => {
+    const programs = get(KEYS.DISCOUNT_PROGRAMS);
+    return programs.filter(p => p.address_id === addressId);
+};
+
+export const insertLocalDiscountProgram = (payload: Row) => {
+    const programs = get(KEYS.DISCOUNT_PROGRAMS);
+    const newProgram = { id: generateId(), days_of_week: [], start_date: null, end_date: null, enabled: false, ...payload };
+    programs.push(newProgram);
+    set(KEYS.DISCOUNT_PROGRAMS, programs);
+    return newProgram;
+};
+
+export const updateLocalDiscountProgram = (programId: string, patch: Row) => {
+    const programs = get(KEYS.DISCOUNT_PROGRAMS);
+    const p = programs.find(p => p.id === programId);
+    if (p) { Object.assign(p, patch); set(KEYS.DISCOUNT_PROGRAMS, programs); }
+};
+
+export const deleteLocalDiscountProgram = (programId: string) => {
+    let programs = get(KEYS.DISCOUNT_PROGRAMS);
+    programs = programs.filter(p => p.id !== programId);
+    set(KEYS.DISCOUNT_PROGRAMS, programs);
+
+    let links = get(KEYS.DISCOUNT_PROGRAM_PRODUCTS);
+    links = links.filter(l => l.discount_program_id !== programId);
+    set(KEYS.DISCOUNT_PROGRAM_PRODUCTS, links);
+    return true;
+};
+
+export const fetchLocalDiscountProgramProductLinks = (programIds: string[]) => {
+    const links = get(KEYS.DISCOUNT_PROGRAM_PRODUCTS);
+    return links.filter(l => programIds.includes(l.discount_program_id));
+};
+
+export const setLocalDiscountProgramProducts = (programId: string, productIds: string[]) => {
+    let links = get(KEYS.DISCOUNT_PROGRAM_PRODUCTS);
+    links = links.filter(l => l.discount_program_id !== programId);
+    for (const productId of productIds) {
+        links.push({ id: generateId(), product_id: productId, discount_program_id: programId });
+    }
+    set(KEYS.DISCOUNT_PROGRAM_PRODUCTS, links);
 };
