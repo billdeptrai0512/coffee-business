@@ -10,6 +10,7 @@ import InlineEditor from '../components/RecipeIngredientPage/InlineEditor'
 import DayOfWeekPicker from '../components/common/DayOfWeekPicker'
 import DiscountTypePicker from '../components/common/DiscountTypePicker'
 import MoneyInput from '../components/common/MoneyInput'
+import ToggleSwitch from '../components/common/ToggleSwitch'
 import { parseVNDInput } from '../utils'
 import { clampPercentInput } from '../utils/discountPrograms'
 import {
@@ -171,15 +172,7 @@ export default function DiscountProgramDetailPage() {
                             {program.enabled ? 'Đang tự động áp giá đúng lịch bên dưới' : 'Đang tắt — không áp giá dù đúng lịch'}
                         </p>
                     </div>
-                    <button
-                        onClick={toggleEnabled}
-                        disabled={!canEdit || saving}
-                        role="switch"
-                        aria-checked={program.enabled}
-                        className={`relative w-12 h-7 rounded-full shrink-0 transition-colors disabled:opacity-50 ${program.enabled ? 'bg-primary' : 'bg-border'}`}
-                    >
-                        <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${program.enabled ? 'left-6' : 'left-1'}`} />
-                    </button>
+                    <ToggleSwitch checked={program.enabled} onChange={toggleEnabled} disabled={!canEdit || saving} />
                 </section>
 
                 <ValueSection key={program.id} program={program} canEdit={canEdit} saving={saving} onSave={saveValue} />

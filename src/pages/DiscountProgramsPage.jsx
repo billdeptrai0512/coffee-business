@@ -8,9 +8,13 @@ import Toast from '../components/POSPage/Toast'
 import IngredientDetailHeader from '../components/IngredientManagementPage/IngredientDetailHeader'
 import MoneyInput from '../components/common/MoneyInput'
 import DiscountTypePicker from '../components/common/DiscountTypePicker'
+import DayOfWeekPicker from '../components/common/DayOfWeekPicker'
+import ToggleSwitch from '../components/common/ToggleSwitch'
 import { formatVND, parseVNDInput } from '../utils'
 import { insertDiscountProgram } from '../services/discountService'
 import { clampPercentInput } from '../utils/discountPrograms'
+
+const initialForm = { name: '', type: 'fixed', value: '', days: [], startDate: '', endDate: '', enabled: false }
 
 function programSummary(p) {
     if (p.type === 'fixed') return `Đồng giá ${formatVND(p.value)}`
@@ -28,21 +32,31 @@ export default function DiscountProgramsPage() {
     const { toast, showToast, showError } = useToast()
 
     const [showCreate, setShowCreate] = useState(false)
-    const [name, setName] = useState('')
-    const [type, setType] = useState('fixed')
-    const [value, setValue] = useState('')
+    const [form, setForm] = useState(initialForm)
     const [saving, setSaving] = useState(false)
 
-    const rawValue = type === 'percent' ? Math.min(parseInt(value, 10) || 0, 100) : parseVNDInput(value)
-    const canSubmit = name.trim() && rawValue > 0 && selectedAddress?.id && !saving
+    const rawValue = form.type === 'percent' ? Math.min(parseInt(form.value, 10) || 0, 100) : parseVNDInput(form.value)
+    const canSubmit = form.name.trim() && rawValue > 0 && selectedAddress?.id && !saving
+
+    function setField(patch) {
+        setForm(f => ({ ...f, ...patch }))
+    }
+
+    function resetForm() {
+        setForm(initialForm)
+        setShowCreate(false)
+    }
 
     async function handleCreate() {
         if (!canSubmit) return
         setSaving(true)
         try {
-            await insertDiscountProgram(name.trim(), type, rawValue, selectedAddress.id)
+            await insertDiscountProgram({
+                name: form.name.trim(), type: form.type, value: rawValue, address_id: selectedAddress.id,
+                days_of_week: form.days, start_date: form.startDate || null, end_date: form.endDate || null, enabled: form.enabled,
+            })
             await refreshProducts()
-            setName(''); setValue(''); setType('fixed'); setShowCreate(false)
+            resetForm()
             showToast('Đã tạo chương trình', 'success')
         } catch (err) {
             showError(err, 'Tạo chương trình giảm giá')
@@ -95,28 +109,63 @@ export default function DiscountProgramsPage() {
                         <input
                             type="text"
                             placeholder="Tên chương trình (VD: Đồng giá thứ Hai)"
-                            value={name}
-                            onChange={e => setName(e.target.value)}
+                            value={form.name}
+                            onChange={e => setField({ name: e.target.value })}
                             className="bg-surface-light border border-border/60 rounded-[12px] px-3 py-2.5 text-[14px] font-medium text-text placeholder:text-text-secondary/50 focus:outline-none focus:border-primary/40 transition-colors"
                         />
-                        <DiscountTypePicker value={type} onChange={t => { setType(t); setValue('') }} />
-                        {type === 'percent' ? (
+                        <DiscountTypePicker value={form.type} onChange={t => setField({ type: t, value: '' })} />
+                        {form.type === 'percent' ? (
                             <input
                                 type="text"
                                 inputMode="numeric"
                                 placeholder="% giảm (VD: 20)"
-                                value={value}
-                                onChange={e => setValue(clampPercentInput(e.target.value))}
+                                value={form.value}
+                                onChange={e => setField({ value: clampPercentInput(e.target.value) })}
                                 className="bg-surface-light border border-border/60 rounded-[12px] px-3 py-2.5 text-[14px] font-bold text-text text-right tabular-nums placeholder:text-text-secondary/50 placeholder:font-normal focus:outline-none focus:border-primary/40 transition-colors"
                             />
                         ) : (
                             <MoneyInput
-                                value={value}
-                                onChange={setValue}
+                                value={form.value}
+                                onChange={v => setField({ value: v })}
                                 onKeyDown={e => { if (e.key === 'Enter') handleCreate() }}
-                                placeholder={type === 'fixed' ? 'Giá bán mới' : 'Số tiền giảm'}
+                                placeholder={form.type === 'fixed' ? 'Giá bán mới' : 'Số tiền giảm'}
                             />
                         )}
+
+                        <div className="pt-2 border-t border-border/40">
+                            <span className="block text-[11px] font-black text-text-secondary uppercase tracking-wide mb-1">Lịch áp dụng</span>
+                            <p className="text-[11px] text-text-secondary mb-2">Không chọn thứ nào = mọi ngày. Để trống ngày = không giới hạn.</p>
+                            <DayOfWeekPicker value={form.days} onChange={days => setField({ days })} />
+                            <div className="flex gap-2 mt-2">
+                                <div className="flex-1">
+                                    <span className="block text-[11px] font-bold text-text-secondary mb-1">Từ ngày</span>
+                                    <input
+                                        type="date"
+                                        value={form.startDate}
+                                        onChange={e => setField({ startDate: e.target.value })}
+                                        className="w-full bg-surface-light border border-border/60 rounded-[12px] px-3 py-2 text-[13px] font-medium text-text focus:outline-none focus:border-primary/40 transition-colors"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <span className="block text-[11px] font-bold text-text-secondary mb-1">Đến ngày</span>
+                                    <input
+                                        type="date"
+                                        value={form.endDate}
+                                        onChange={e => setField({ endDate: e.target.value })}
+                                        className="w-full bg-surface-light border border-border/60 rounded-[12px] px-3 py-2 text-[13px] font-medium text-text focus:outline-none focus:border-primary/40 transition-colors"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                            <div className="min-w-0">
+                                <p className="text-text text-[13px] font-black">Bật chương trình</p>
+                                <p className="text-text-secondary text-[11px] leading-tight">Có thể để tắt rồi bật sau khi kiểm tra lại lịch</p>
+                            </div>
+                            <ToggleSwitch checked={form.enabled} onChange={enabled => setField({ enabled })} />
+                        </div>
+
                         <div className="flex gap-2">
                             <button
                                 onClick={handleCreate}
@@ -126,7 +175,7 @@ export default function DiscountProgramsPage() {
                                 {saving ? 'Đang...' : 'Tạo'}
                             </button>
                             <button
-                                onClick={() => { setShowCreate(false); setName(''); setValue(''); setType('fixed') }}
+                                onClick={resetForm}
                                 className="px-4 py-3 rounded-[12px] bg-surface-light border border-border/60 text-text text-[14px] font-bold"
                             >
                                 Hủy

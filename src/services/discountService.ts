@@ -21,10 +21,9 @@ export async function fetchDiscountPrograms(addressId: UUID | null) {
     return data || []
 }
 
-export async function insertDiscountProgram(name: string, type: string, value: number, addressId: UUID) {
-    if (localRepo.isGuest()) return localRepo.insertLocalDiscountProgram({ name, type, value, address_id: addressId })
+export async function insertDiscountProgram(payload: Row) {
+    if (localRepo.isGuest()) return localRepo.insertLocalDiscountProgram(payload)
     if (!supabase) throw new Error('No Supabase connection')
-    const payload: Row = { name, type, value, address_id: addressId }
     const { data, error } = await supabase.from('discount_programs').insert(payload).select().single()
     if (error) throw error
     return data
