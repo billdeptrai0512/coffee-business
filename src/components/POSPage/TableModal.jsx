@@ -388,7 +388,11 @@ export default function TableModal({ onClose, inline = false }) {
                     table={detailTable}
                     tableNames={names}
                     onClose={() => setDetail(null)}
-                    onPick={() => pick(detail)}
+                    // Đóng riêng detail: pick() chỉ gọi onClose?.() của TableModal, mà bản
+                    // inline (tablet, .pos-table-pane) không nhận onClose (lưới bàn luôn hiện
+                    // sẵn, không có gì để đóng) — thiếu dòng này thì "Gọi thêm" set tableName
+                    // xong nhưng detail đứng nguyên, nhìn như bấm không ăn.
+                    onPick={() => { pick(detail); setDetail(null) }}
                 />
             )}
             {/* takeaway && cùng lý do detailTable && ở trên: đơn cuối vừa ra món/chuyển đi
@@ -398,7 +402,9 @@ export default function TableModal({ onClose, inline = false }) {
                     orders={takeawayRounds}
                     tableNames={names}
                     onClose={() => setShowTakeaway(false)}
-                    onPick={() => pick('')}
+                    // Đóng riêng showTakeaway: cùng lý do onPick của TableDetailModal ở trên —
+                    // pick()'s onClose?.() no-op ở bản inline tablet.
+                    onPick={() => { pick(''); setShowTakeaway(false) }}
                 />
             )}
         </>
