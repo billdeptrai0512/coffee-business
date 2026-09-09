@@ -265,6 +265,12 @@ export default function RecipeMenuPage() {
                             Topping
                         </button>
                         <button
+                            onClick={() => navigate('/discounts', { state: location.state })}
+                            className="shrink-0 px-3 rounded-[12px] flex items-center justify-center bg-surface border border-border/60 text-text-secondary text-[12px] font-black uppercase tracking-widest hover:bg-surface-light active:scale-[0.98] transition-all"
+                        >
+                            Giảm giá
+                        </button>
+                        <button
                             onClick={() => setShowCreateModal(true)}
                             aria-label="Tạo công thức"
                             className="shrink-0 px-3 rounded-[12px] flex items-center justify-center bg-primary text-bg hover:bg-primary/90 active:scale-95 transition-all"
