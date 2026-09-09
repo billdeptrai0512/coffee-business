@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react'
-import { Capacitor } from '@capacitor/core'
 import { ArrowLeft, Trash2, Check, Printer, ArrowRightLeft, Loader } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
 import { useHistory } from '../../contexts/HistoryContext'
@@ -8,7 +7,7 @@ import { useConfirm } from '../../contexts/ConfirmContext'
 import { useAddress } from '../../contexts/AddressContext'
 import { useMoveTarget } from '../../hooks/useMoveTarget'
 import { formatVND, discountToPercent } from '../../utils'
-import { printBillNative } from '../../lib/escposBitmap'
+import { printBillJob } from '../../lib/escposBitmap'
 import { bumpOrderPrintCount } from '../../services/orderService'
 import { timeStringVN, openedLabelVN, dateShortVN, isSameDayVN } from '../../utils/dateVN'
 import { priceLineFor } from '../../utils/billLines'
@@ -113,42 +112,30 @@ export default function TableDetailModal({ table, tableNames = [], onClose, onPi
         await handleDeleteOrder(round.id)
     }
 
-    // App native (Capacitor) + đã cấu hình IP máy in quầy: in bitmap thẳng qua mạng,
-    // không dialog (xem setPrinters ở AddressContext, escposBitmap.js). Web hoặc chưa
-    // cấu hình: mở hộp in của trình duyệt/hệ điều hành như cũ, CSS @media print
-    // (index.css) lo phần chỉ hiện #print-bill — bill dựng sẵn trong DOM (PrintBill)
-    // nên không có bước render lại nào giữa cú bấm và lệnh in.
+    // printBillJob (escposBitmap.js, dùng chung với usePrintArmed — xem comment ở đó): native
+    // (Capacitor + đã cấu hình IP máy in quầy) in bitmap thẳng qua mạng không dialog, web hoặc
+    // chưa cấu hình thì mở hộp in trình duyệt/hệ điều hành như cũ, CSS @media print (index.css)
+    // lo phần chỉ hiện #print-bill — bill dựng sẵn trong DOM (PrintBill) nên không có bước
+    // render lại nào giữa cú bấm và lệnh in.
     async function handlePrint() {
-        if (Capacitor.isNativePlatform() && selectedAddress?.counter_printer_ip) {
-            try {
-                await printBillNative(billRef, selectedAddress.counter_printer_ip)
-            } catch (e) {
-                // Trước đây chỉ console.error — người bấm Tính tiền không thấy gì cả khi
-                // máy in mất kết nối (IP đổi, mất mạng...), tưởng app đứng im. Bàn vẫn
-                // đóng bình thường bên dưới (tiền đã tính, in chỉ là giấy tiện cho khách)
-                // nhưng phải báo rõ để nhân viên biết mà in lại tay.
-                showError(e, 'In hoá đơn')
-            }
-            return
+        try {
+            await printBillJob(billRef, selectedAddress?.counter_printer_ip)
+        } catch (e) {
+            // Trước đây chỉ console.error — người bấm Tính tiền không thấy gì cả khi
+            // máy in mất kết nối (IP đổi, mất mạng...), tưởng app đứng im. Bàn vẫn
+            // đóng bình thường bên dưới (tiền đã tính, in chỉ là giấy tiện cho khách)
+            // nhưng phải báo rõ để nhân viên biết mà in lại tay.
+            showError(e, 'In hoá đơn')
         }
-        await new Promise((resolve) => {
-            // Safety valve: WebView native (Capacitor, chưa cấu hình IP máy in) không đảm bảo
-            // bắn 'afterprint' sau window.print() — thiếu timeout thì Tính tiền treo vĩnh viễn,
-            // bàn không bao giờ đóng. Cùng pattern loadingValve ở AddressStatsContext.jsx.
-            // resolve() gọi 2 lần vô hại (Promise chỉ ăn lần đầu); { once } tự gỡ listener.
-            window.addEventListener('afterprint', resolve, { once: true })
-            setTimeout(resolve, 5000)
-            billRef.current?.print()
-        })
     }
 
     // Nút "In bill" ở header — KHÁC handleBill (Tính tiền, đã có billing chặn bấm đúp): trước
     // đây không có cờ nào chặn bấm lại trong lúc in native (vài giây thật qua mạng, không có
     // phản hồi tức thì nào cho người dùng thấy) — bấm 2 lần liên tiếp gọi captureImage() chồng
     // lên nhau, cùng mutate style/className của #print-bill, làm ảnh chụp lỡ dở/lỗi mà không
-    // ném ra lỗi gì để bắt (xem captureChainRef ở PrintBill.jsx — đã chuỗi hoá phần đó làm
-    // lưới an toàn cuối, nhưng chặn từ đây vẫn tốt hơn: khỏi phải xếp hàng chờ). Dùng lại đúng
-    // cờ billing (không cần state riêng) — khoá luôn cả "Tính tiền" trong lúc đang in tay là
+    // ném ra lỗi gì để bắt (xem chainRef ở PrintBill.jsx — đã chuỗi hoá phần đó làm lưới an
+    // toàn cuối, nhưng chặn từ đây vẫn tốt hơn: khỏi phải xếp hàng chờ). Dùng lại đúng cờ
+    // billing (không cần state riêng) — khoá luôn cả "Tính tiền" trong lúc đang in tay là
     // hợp lý, không nên đóng bàn giữa lúc in dở.
     async function handleHeaderPrint() {
         if (billing) return

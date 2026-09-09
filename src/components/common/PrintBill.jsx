@@ -18,13 +18,6 @@ const WIFI_QR_VALUE = `WIFI:T:WPA;S:${WIFI_SSID};P:${WIFI_PASSWORD};;`
 
 const fullLabel = (d) => `${timeStringVN(d)} ${dateShortVN(d)}`
 
-// Hàng đợi chụp ảnh — CẤP MODULE (không phải per-instance): 2 thẻ đơn khác nhau ở Nhật ký là
-// 2 <PrintBill> riêng biệt (mỗi thẻ instance riêng khi printArmed, xem usePrintArmed), nhưng
-// captureImage() của CẢ HAI đều mutate CHUNG một DOM node document.getElementById('print-bill')
-// — hàng đợi phải dùng chung 1 biến ở module thì mới chặn được 2 instance khác nhau chạy chồng
-// lên nhau, một ref cục bộ trong component chỉ chặn được double-tap trên CÙNG 1 thẻ.
-let captureChain = Promise.resolve()
-
 // tableName truthy → bill theo bàn: "Bàn: <tên>" + "Giờ vào" (openedAt, cố định) + "Giờ ra"
 // (thời điểm bấm in, cập nhật lại mỗi lần in). tableName null → đơn mang đi: "Bàn: Mang đi"
 // + 1 mốc "Giờ" (openedAt = order.createdAt, cố định, chỉ giờ không kèm ngày — ngày đã có
@@ -36,6 +29,13 @@ const PrintBill = forwardRef(function PrintBill(
     const printedAtRef = useRef(null)
     const printDateRef = useRef(null)
     const printCountLabelRef = useRef(null)
+    const elRef = useRef(null)
+    // Hàng đợi chụp ảnh — CẤP INSTANCE (mỗi <PrintBill> giữ chuỗi riêng): lưới an toàn chặn 2
+    // lệnh captureImage() chồng lên nhau TRÊN CHÍNH THẺ NÀY (double-tap, "Tính tiền" tự in
+    // trong lúc bấm luôn nút In bill riêng). Trước đây phải để cấp module vì mọi <PrintBill>
+    // cùng tra chung document.getElementById('print-bill'); giờ mỗi thẻ đã tự giữ elRef riêng
+    // (bên dưới) nên 2 thẻ khác nhau không còn đụng chung node để mà cần xếp hàng chung nữa.
+    const chainRef = useRef(Promise.resolve())
 
     // Cập nhật "Giờ ra"/"Ngày"/"In lần" ngay trước khi lấy bản in — dùng chung cho cả
     // print() (web) và captureImage() (native) nên 2 đường in không lệch giờ/lần in.
@@ -70,18 +70,16 @@ const PrintBill = forwardRef(function PrintBill(
         // chỉ đường native cần, không kéo vào bundle web.
         async captureImage() {
             bumpPrintMeta()
-            // Chuỗi hoá qua captureChain (module-level, xem khai báo đầu file) — hàm này
-            // mutate CHUNG 1 DOM node (#print-bill: đổi className/style rồi khôi phục lại
-            // nguyên trạng cũ), CHUNG cho mọi <PrintBill> đang tồn tại (bàn lẫn từng thẻ đơn
-            // Nhật ký). 2 lần gọi chồng lên nhau (double-tap, "Tính tiền" tự in trong lúc bấm
-            // luôn nút In bill riêng, hoặc bấm in ở 2 thẻ đơn khác nhau gần lúc nhau) làm lần
-            // sau ghi đè style/className giữa lúc lần trước đang chụp/khôi phục — html2canvas
-            // vẫn chạy "thành công" nhưng chụp trúng lúc DOM sai trạng thái (ảnh trắng/lỗi),
-            // không ném lỗi gì để bắt — đúng kiểu "lúc in được lúc không, không có lỗi". Nối
-            // vào .then/.catch (không await ngay) để lần gọi SAU luôn đợi lần TRƯỚC xong (dù
-            // thành công hay lỗi) mới bắt đầu, thay vì chạy song song.
+            // Chuỗi hoá qua chainRef (xem khai báo ở đầu component) — lưới an toàn chặn 2
+            // lệnh gọi chồng lên nhau TRÊN CÙNG THẺ NÀY (double-tap, "Tính tiền" tự in trong
+            // lúc bấm luôn nút In bill riêng) mutate style/className của elRef.current (đổi
+            // rồi khôi phục lại nguyên trạng cũ) chồng lên nhau — lần sau ghi đè giữa lúc lần
+            // trước đang chụp/khôi phục thì html2canvas vẫn chạy "thành công" nhưng chụp trúng
+            // lúc DOM sai trạng thái (ảnh trắng/lỗi), không ném lỗi gì để bắt. Nối vào
+            // .then/.catch (không await ngay) để lần gọi SAU luôn đợi lần TRƯỚC xong (dù thành
+            // công hay lỗi) mới bắt đầu, thay vì chạy song song.
             const run = async () => {
-                const el = document.getElementById('print-bill')
+                const el = elRef.current
                 if (!el) return null
                 const prevClassName = el.className
                 const prevStyle = el.getAttribute('style')
@@ -104,8 +102,8 @@ const PrintBill = forwardRef(function PrintBill(
                     else el.removeAttribute('style')
                 }
             }
-            const result = captureChain.then(run, run)
-            captureChain = result.catch(() => {})
+            const result = chainRef.current.then(run, run)
+            chainRef.current = result.catch(() => {})
             return result
         },
     }), [])
@@ -117,7 +115,7 @@ const PrintBill = forwardRef(function PrintBill(
     // xuống đúng bằng chiều cao phần nội dung ẩn phía trước, ra khoảng trắng lớn đầu bill.
     // Portal ra body loại bỏ hẳn mọi tổ tiên/nội dung đứng trước nó.
     return createPortal((
-        <div id="print-bill" className="hidden">
+        <div id="print-bill" ref={elRef} className="hidden">
             {/* ponytail: logo/địa chỉ/SĐT hardcode cho 1 quán (Kôphin) — addresses
                 chưa có cột logo/address/phone (xem AddressContext), nên chưa thể tự
                 set theo từng địa chỉ. Sau này mỗi khách cần tự upload logo + nhập
